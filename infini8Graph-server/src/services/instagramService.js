@@ -93,7 +93,7 @@ class InstagramService {
      */
     async getMedia(limit = 25, after = null) {
         const params = {
-            fields: 'id,caption,media_type,media_url,thumbnail_url,permalink,timestamp,like_count,comments_count,insights.metric(impressions,reach,engagement,saved,shares)',
+            fields: 'id,caption,media_type,media_url,thumbnail_url,permalink,timestamp,like_count,comments_count,insights.metric(impressions,reach,saved)',
             limit: limit
         };
 
@@ -113,11 +113,14 @@ class InstagramService {
         let metrics;
 
         if (mediaType === 'REEL' || mediaType === 'VIDEO') {
-            metrics = 'impressions,reach,likes,comments,shares,saved,plays,total_interactions';
+            // Valid metrics for Reels/Video: impressions, reach, plays, saved, likes, comments, shares, total_interactions
+            metrics = 'impressions,reach,saved,plays,total_interactions';
         } else if (mediaType === 'CAROUSEL_ALBUM') {
-            metrics = 'impressions,reach,likes,comments,shares,saved,carousel_album_impressions,carousel_album_reach,carousel_album_engagement';
+            // Valid metrics for Carousel
+            metrics = 'impressions,reach,saved';
         } else {
-            metrics = 'impressions,reach,likes,comments,shares,saved';
+            // Valid metrics for Images
+            metrics = 'impressions,reach,saved';
         }
 
         return this.apiRequest(`/${mediaId}/insights`, {

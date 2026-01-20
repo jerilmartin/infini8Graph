@@ -1,6 +1,7 @@
 import axios from 'axios';
+import Cookies from 'js-cookie';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3005';
 
 const api = axios.create({
     baseURL: `${API_URL}/api`,
@@ -8,11 +9,29 @@ const api = axios.create({
     headers: { 'Content-Type': 'application/json' }
 });
 
+// Add auth token to requests
+api.interceptors.request.use((config) => {
+    // FALLBACK: Use localStorage directly to avoid any Cookie library issues
+    // We will re-enable cookies later once we verify token passing works
+    let token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
+
+    console.log('🔥 API Interceptor Running. URL:', config.url);
+    console.log('🔥 API Interceptor Token:', token ? 'FOUND' : 'MISSING');
+
+    if (token) {
+        config.headers.Authorization = `Bearer ${token}`;
+        config.headers['X-Auth-Token'] = token; // Redundant backup
+    }
+    return config;
+}, (error) => {
+    console.error('🔥 Interceptor Error:', error);
+    return Promise.reject(error);
+});
+
 // Simple error interceptor - NO automatic redirects
 api.interceptors.response.use(
     (response) => response,
     (error) => {
-        // Just log the error, don't redirect
         console.error('API Error:', error.response?.status, error.message);
         return Promise.reject(error);
     }

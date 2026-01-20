@@ -11,6 +11,7 @@ const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3000';
 export async function login(req, res) {
     try {
         const loginUrl = authService.getLoginUrl();
+        console.log('🔥 GENERATED LOGIN URL:', loginUrl);
         res.json({
             success: true,
             loginUrl
@@ -28,6 +29,10 @@ export async function login(req, res) {
  * Handle OAuth callback
  */
 export async function callback(req, res) {
+    console.log('🔥 CALLBACK HIT!');
+    console.log('🔥 Full URL:', req.originalUrl);
+    console.log('🔥 Query params:', JSON.stringify(req.query));
+    console.log('🔥 All headers:', JSON.stringify(req.headers, null, 2));
     try {
         const { code, error, error_description } = req.query;
 
@@ -54,15 +59,18 @@ export async function callback(req, res) {
         );
 
         // Set HttpOnly cookie with JWT
+        // Note: Using secure:true and sameSite:'none' for cross-origin OAuth
         res.cookie('auth_token', userData.jwt, {
             httpOnly: true,
-            secure: process.env.NODE_ENV === 'production',
-            sameSite: 'lax',
+            secure: true,
+            sameSite: 'none',
             maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
         });
 
-        // Redirect to dashboard
-        res.redirect(`${FRONTEND_URL}/dashboard`);
+        // Redirect to dashboard with token
+        const redirectUrl = `${FRONTEND_URL}/dashboard?token=${userData.jwt}`;
+        console.log('✅ Auth successful! Redirecting to:', redirectUrl);
+        res.redirect(redirectUrl);
     } catch (error) {
         console.error('OAuth callback error:', error);
         res.redirect(`${FRONTEND_URL}/login?error=${encodeURIComponent(error.message)}`);

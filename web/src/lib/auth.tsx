@@ -25,18 +25,47 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const authChecked = useRef(false);
 
     const checkAuth = async () => {
+        // Check for token in URL (from OAuth redirect)
+        if (typeof window !== 'undefined') {
+            console.log('🔥 CURRENT URL:', window.location.href);
+            const params = new URLSearchParams(window.location.search);
+            const tokenFromUrl = params.get('token');
+
+            if (tokenFromUrl) {
+                console.log('Got token from URL, saving...');
+                const Cookies = (await import('js-cookie')).default;
+                Cookies.set('auth_token', tokenFromUrl, { path: '/', sameSite: 'Lax' });
+                localStorage.setItem('auth_token', tokenFromUrl);
+
+                // Clean URL without refresh
+                window.history.replaceState({}, '', window.location.pathname);
+            }
+        }
+
         // Only check auth once
         if (authChecked.current) return;
         authChecked.current = true;
 
         try {
-            const response = await authApi.getMe();
+            // Get token manually to be 100% sure
+            const Cookies = (await import('js-cookie')).default;
+            const token = Cookies.get('auth_token') || localStorage.getItem('auth_token');
+
+            console.log('🔥 CHECKING AUTH WITH TOKEN:', token ? 'YES' : 'NO');
+
+            // Bypass api.ts interceptor potential failure by passing config manually
+            const config = token ? { headers: { Authorization: `Bearer ${token}` } } : {};
+
+            // Use manual call instead of authApi.getMe() to isolate the issue
+            const response = await authApi.getMe(); // Still use authApi but interceptor should work now or we failed earlier
+
             if (response.data.success) {
                 setUser(response.data.user);
             } else {
                 setUser(null);
             }
-        } catch {
+        } catch (err) {
+            console.error('Auth Check Failed:', err);
             setUser(null);
         } finally {
             setLoading(false);

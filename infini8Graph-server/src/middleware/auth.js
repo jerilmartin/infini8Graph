@@ -17,6 +17,25 @@ export function authenticate(req, res, next) {
             }
         }
 
+        // Fallback to X-Auth-Token header (sometimes Authorization is stripped)
+        if (!token) {
+            token = req.headers['x-auth-token'];
+        }
+
+        // Fallback to query parameter (last resort for dev)
+        if (!token && req.query?.token) {
+            token = req.query.token;
+        }
+
+        // Debug logging
+        if (process.env.NODE_ENV === 'development') {
+            console.log('Auth check:', {
+                hasCookie: !!req.cookies?.auth_token,
+                hasHeader: !!req.headers.authorization,
+                tokenFound: !!token
+            });
+        }
+
         if (!token) {
             return res.status(401).json({
                 success: false,

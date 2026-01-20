@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { Instagram, BarChart3, TrendingUp, Zap } from 'lucide-react';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3005';
 
 export default function LoginPage() {
     const [isLoggingIn, setIsLoggingIn] = useState(false);

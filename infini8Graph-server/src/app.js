@@ -11,13 +11,17 @@ import instagramRoutes from './routes/instagram.js';
 dotenv.config();
 
 const app = express();
-const PORT = process.env.PORT || 3001;
+const PORT = process.env.PORT || 3005; // Force NEW PORT 3005
+
+console.log('🚀 SERVER STARTING IN:', process.cwd());
+console.log('🚀 SERVER FILE:', import.meta.url);
 
 // Security middleware
 app.use(helmet());
 app.use(cors({
     origin: process.env.FRONTEND_URL || 'http://localhost:3000',
-    credentials: true
+    credentials: true,
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Auth-Token']
 }));
 
 // Rate limiting (increased for development)
@@ -36,6 +40,11 @@ app.use(cookieParser());
 // Health check
 app.get('/health', (req, res) => {
     res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+// DEBUG PROOF OF LIFE
+app.get('/test-live-code', (req, res) => {
+    res.send('<h1>I AM RUNNING THE NEW CODE 🔥</h1>');
 });
 
 // API Routes
