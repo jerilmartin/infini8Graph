@@ -7,6 +7,7 @@ import dotenv from 'dotenv';
 
 import authRoutes from './routes/auth.js';
 import instagramRoutes from './routes/instagram.js';
+import adsRoutes from './routes/ads.js';
 
 dotenv.config();
 
@@ -50,6 +51,7 @@ app.get('/test-live-code', (req, res) => {
 // API Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/instagram', instagramRoutes);
+app.use('/api/ads', adsRoutes);
 
 // Error handler
 app.use((err, req, res, next) => {

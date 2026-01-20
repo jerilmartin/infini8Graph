@@ -13,22 +13,39 @@ import {
     Download,
     Settings,
     LogOut,
-    ChevronRight,
     ChevronLeft,
+    ChevronRight,
     Menu,
-    Instagram,
-    X
+    X,
+    Megaphone,
+    Instagram
 } from 'lucide-react';
 
-const navItems = [
-    { href: '/dashboard', icon: LayoutDashboard, label: 'Overview' },
-    { href: '/growth', icon: TrendingUp, label: 'Growth' },
-    { href: '/engagement', icon: Heart, label: 'Engagement' },
-    { href: '/reels', icon: Film, label: 'Reels' },
-    { href: '/best-time', icon: Clock, label: 'Best Time' },
-    { href: '/hashtags', icon: Hash, label: 'Hashtags' },
-    { href: '/export', icon: Download, label: 'Export' },
-    { href: '/settings', icon: Settings, label: 'Settings' },
+const navSections = [
+    {
+        title: 'Analytics',
+        items: [
+            { href: '/dashboard', icon: LayoutDashboard, label: 'Overview' },
+            { href: '/growth', icon: TrendingUp, label: 'Growth' },
+            { href: '/engagement', icon: Heart, label: 'Engagement' },
+            { href: '/reels', icon: Film, label: 'Reels' },
+            { href: '/best-time', icon: Clock, label: 'Best Time' },
+            { href: '/hashtags', icon: Hash, label: 'Hashtags' },
+        ]
+    },
+    {
+        title: 'Advertising',
+        items: [
+            { href: '/ads', icon: Megaphone, label: 'Ads' },
+        ]
+    },
+    {
+        title: 'Tools',
+        items: [
+            { href: '/export', icon: Download, label: 'Export' },
+            { href: '/settings', icon: Settings, label: 'Settings' },
+        ]
+    }
 ];
 
 interface SidebarProps {
@@ -45,98 +62,114 @@ export default function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
             {/* Mobile Menu Button */}
             <button
                 onClick={onToggle}
-                className="fixed top-4 left-4 z-[60] p-2.5 rounded-lg bg-white shadow-md border border-gray-200 lg:hidden"
+                className="mobile-menu-btn"
                 aria-label="Toggle Menu"
             >
                 {isCollapsed ? <Menu size={20} /> : <X size={20} />}
             </button>
 
-            {/* Sidebar Overlay for Mobile */}
-            {!isCollapsed && (
-                <div
-                    className="fixed inset-0 bg-black/30 z-40 lg:hidden"
-                    onClick={onToggle}
-                />
-            )}
+            {/* Overlay for mobile */}
+            <div
+                className={`sidebar-overlay ${!isCollapsed ? 'visible' : ''}`}
+                onClick={onToggle}
+            />
 
             {/* Sidebar */}
-            <aside
-                className={`fixed left-0 top-0 h-screen glass flex flex-col z-50 transition-all duration-200 ease-out ${isCollapsed ? '-translate-x-full lg:translate-x-0 lg:w-[72px]' : 'translate-x-0 w-64'
-                    }`}
-            >
-                {/* Logo & Toggle */}
-                <div className="p-4 flex items-center justify-between border-b border-white/10">
-                    <Link href="/dashboard" className="flex items-center gap-3">
-                        <div
-                            className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 bg-gradient-to-br from-indigo-500 to-purple-600"
-                        >
-                            <span className="text-base font-bold text-white">∞</span>
+            <aside className={`sidebar ${isCollapsed ? 'collapsed' : ''} ${!isCollapsed ? 'open' : ''}`}>
+                {/* Header */}
+                <div className="sidebar-header">
+                    <Link href="/dashboard" style={{ display: 'flex', alignItems: 'center', gap: 10, textDecoration: 'none', color: 'inherit' }}>
+                        <div style={{
+                            width: 32,
+                            height: 32,
+                            borderRadius: 8,
+                            background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            color: 'white',
+                            fontWeight: 700,
+                            fontSize: 16
+                        }}>
+                            ∞
                         </div>
                         {!isCollapsed && (
-                            <span className="text-lg font-semibold text-white">infini8Graph</span>
+                            <span style={{ fontWeight: 600, fontSize: 16 }}>infini8Graph</span>
                         )}
                     </Link>
 
-                    {/* Desktop Toggle Button */}
                     <button
                         onClick={onToggle}
-                        className="hidden lg:flex p-1.5 rounded-md hover:bg-white/10 transition-colors text-gray-400 hover:text-white"
-                        aria-label="Toggle Sidebar"
+                        style={{
+                            padding: 6,
+                            background: 'transparent',
+                            border: 'none',
+                            color: 'var(--sidebar-muted)',
+                            cursor: 'pointer',
+                            borderRadius: 4,
+                            display: isCollapsed ? 'none' : 'flex'
+                        }}
                     >
-                        {isCollapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
+                        <ChevronLeft size={18} />
                     </button>
                 </div>
 
                 {/* Account Info */}
                 {!isCollapsed && (
-                    <div className="px-4 py-3 border-b border-white/10">
-                        <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-pink-500 to-orange-400 flex items-center justify-center flex-shrink-0">
-                                <Instagram size={18} className="text-white" />
+                    <div style={{ padding: '12px 12px 0' }}>
+                        <div className="account-card">
+                            <div className="account-avatar">
+                                <Instagram size={16} />
                             </div>
-                            <div className="flex-1 min-w-0">
-                                <p className="text-sm font-medium text-white truncate">
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                                <div style={{ fontSize: 13, fontWeight: 500, color: 'white', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                     @{user?.username || 'User'}
-                                </p>
-                                <p className="text-xs text-gray-400">Instagram Business</p>
+                                </div>
+                                <div style={{ fontSize: 11, color: 'var(--sidebar-muted)' }}>
+                                    Instagram Business
+                                </div>
                             </div>
                         </div>
                     </div>
                 )}
 
                 {/* Navigation */}
-                <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
-                    {!isCollapsed && (
-                        <p className="px-3 py-2 text-xs font-medium text-gray-500 uppercase tracking-wider">
-                            Analytics
-                        </p>
-                    )}
-                    {navItems.map((item) => {
-                        const isActive = pathname === item.href;
-                        return (
-                            <Link
-                                key={item.href}
-                                href={item.href}
-                                className={`nav-link ${isActive ? 'active' : ''} ${isCollapsed ? 'justify-center px-2' : ''}`}
-                                title={isCollapsed ? item.label : undefined}
-                            >
-                                <item.icon size={18} />
-                                {!isCollapsed && (
-                                    <>
-                                        <span className="flex-1">{item.label}</span>
-                                        {isActive && <ChevronRight size={14} />}
-                                    </>
-                                )}
-                            </Link>
-                        );
-                    })}
+                <nav className="sidebar-nav">
+                    {navSections.map((section) => (
+                        <div key={section.title} className="sidebar-section">
+                            {!isCollapsed && (
+                                <div className="sidebar-section-title">{section.title}</div>
+                            )}
+                            {section.items.map((item) => {
+                                const isActive = pathname === item.href;
+                                return (
+                                    <Link
+                                        key={item.href}
+                                        href={item.href}
+                                        className={`nav-item ${isActive ? 'active' : ''} ${isCollapsed ? 'collapsed' : ''}`}
+                                        title={isCollapsed ? item.label : undefined}
+                                    >
+                                        <item.icon size={18} />
+                                        {!isCollapsed && <span>{item.label}</span>}
+                                    </Link>
+                                );
+                            })}
+                        </div>
+                    ))}
                 </nav>
 
-                {/* Logout */}
-                <div className="p-3 border-t border-white/10">
+                {/* Footer */}
+                <div className="sidebar-footer">
                     <button
                         onClick={logout}
-                        className={`nav-link w-full text-red-400 hover:text-red-300 hover:bg-red-500/10 ${isCollapsed ? 'justify-center px-2' : ''}`}
+                        className={`nav-item ${isCollapsed ? 'collapsed' : ''}`}
+                        style={{
+                            width: '100%',
+                            background: 'transparent',
+                            border: 'none',
+                            cursor: 'pointer',
+                            color: '#f87171'
+                        }}
                         title={isCollapsed ? 'Logout' : undefined}
                     >
                         <LogOut size={18} />

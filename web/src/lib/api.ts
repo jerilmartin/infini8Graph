@@ -55,4 +55,15 @@ export const instagramApi = {
         api.get(`/instagram/export?format=${format}&metrics=${metrics}`)
 };
 
+export const adsApi = {
+    testPermissions: () => api.get('/ads/test-permissions'),
+    getAdAccounts: () => api.get('/ads/accounts'),
+    getAdInsights: (adAccountId: string, datePreset = 'last_90d') =>
+        api.get(`/ads/accounts/${adAccountId}/insights?datePreset=${datePreset}`),
+    getCampaigns: (adAccountId: string) => api.get(`/ads/accounts/${adAccountId}/campaigns`),
+    getAdSets: (adAccountId: string) => api.get(`/ads/accounts/${adAccountId}/adsets`),
+    getAds: (adAccountId: string) => api.get(`/ads/accounts/${adAccountId}/ads`),
+    getPageInsights: () => api.get('/ads/page-insights')
+};
+
 export default api;

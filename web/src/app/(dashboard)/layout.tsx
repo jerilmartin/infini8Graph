@@ -9,6 +9,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     const router = useRouter();
     const { user, loading } = useAuth();
     const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+    const [isMobile, setIsMobile] = useState(false);
 
     useEffect(() => {
         if (!loading && !user) {
@@ -16,26 +17,40 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         }
     }, [user, loading, router]);
 
-    // Load sidebar state from localStorage
+    // Check for mobile
     useEffect(() => {
-        const saved = localStorage.getItem('sidebar-collapsed');
-        if (saved) {
-            setSidebarCollapsed(JSON.parse(saved));
-        }
+        const checkMobile = () => setIsMobile(window.innerWidth < 1024);
+        checkMobile();
+        window.addEventListener('resize', checkMobile);
+        return () => window.removeEventListener('resize', checkMobile);
     }, []);
+
+    // Load sidebar state from localStorage (desktop only)
+    useEffect(() => {
+        if (!isMobile) {
+            const saved = localStorage.getItem('sidebar-collapsed');
+            if (saved) {
+                setSidebarCollapsed(JSON.parse(saved));
+            }
+        } else {
+            setSidebarCollapsed(true); // Default closed on mobile
+        }
+    }, [isMobile]);
 
     const toggleSidebar = () => {
         const newState = !sidebarCollapsed;
         setSidebarCollapsed(newState);
-        localStorage.setItem('sidebar-collapsed', JSON.stringify(newState));
+        if (!isMobile) {
+            localStorage.setItem('sidebar-collapsed', JSON.stringify(newState));
+        }
     };
 
     if (loading) {
         return (
-            <div className="min-h-screen flex items-center justify-center">
-                <div className="text-center">
-                    <div className="spinner mx-auto mb-4"></div>
-                    <p className="text-[var(--muted)]">Loading your Instagram analytics...</p>
+            <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <div style={{ textAlign: 'center' }}>
+                    <div className="spinner" style={{ margin: '0 auto 16px' }}></div>
+                    <p className="text-muted">Loading...</p>
                 </div>
             </div>
         );
@@ -44,12 +59,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     if (!user) return null;
 
     return (
-        <div className="min-h-screen">
+        <div>
             <Sidebar isCollapsed={sidebarCollapsed} onToggle={toggleSidebar} />
-            <main
-                className={`p-4 md:p-8 transition-all duration-300 ${sidebarCollapsed ? 'lg:ml-20' : 'lg:ml-64'
-                    } pt-16 lg:pt-8`}
-            >
+            <main className={`main-content ${sidebarCollapsed ? 'sidebar-collapsed' : ''}`}>
                 {children}
             </main>
         </div>

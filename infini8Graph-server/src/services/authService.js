@@ -22,7 +22,9 @@ export function getLoginUrl() {
         'instagram_manage_insights',
         'pages_show_list',
         'pages_read_engagement',
-        'business_management'
+        'business_management',
+        'ads_read',           // For ad account insights
+        'read_insights'       // For page/app insights
     ].join(',');
 
     const params = new URLSearchParams({
