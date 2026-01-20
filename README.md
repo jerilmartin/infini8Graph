@@ -147,4 +147,4 @@ Apply the SQL schema to your Supabase project:
 
 ---
 
-Built with ❤️ for Instagram creators and businesses
+
