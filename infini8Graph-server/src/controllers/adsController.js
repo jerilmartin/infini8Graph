@@ -450,3 +450,321 @@ export async function testAdsPermissions(req, res) {
 export async function getPageInsights(req, res) {
     res.json({ success: true, message: 'Not implemented' });
 }
+
+/**
+ * Get Conversion Funnel Analytics
+ * Tracks: Landing Page View → View Content → Add to Cart → Initiate Checkout → Purchase
+ */
+export async function getConversionFunnel(req, res) {
+    try {
+        const { adAccountId } = req.params;
+        const { datePreset = 'last_90d' } = req.query;
+        const accessToken = await authService.getAccessToken(req.user.userId);
+
+        if (!accessToken) {
+            return res.status(401).json({ success: false, error: 'Access token not found' });
+        }
+
+        const accountId = adAccountId.startsWith('act_') ? adAccountId : `act_${adAccountId}`;
+
+        // Fetch funnel metrics
+        const response = await axios.get(`${GRAPH_API_BASE}/${accountId}/insights`, {
+            params: {
+                access_token: accessToken,
+                fields: 'actions,action_values,cost_per_action_type,spend',
+                date_preset: datePreset
+            }
+        });
+
+        const data = response.data.data?.[0] || {};
+        const actions = data.actions || [];
+        const actionValues = data.action_values || [];
+        const costPerAction = data.cost_per_action_type || [];
+        const totalSpend = parseFloat(data.spend || 0);
+
+        // Extract funnel stages
+        const funnelStages = [
+            'landing_page_view',
+            'view_content',
+            'add_to_cart',
+            'initiate_checkout',
+            'add_payment_info',
+            'purchase'
+        ];
+
+        const getActionValue = (type) => {
+            const action = actions.find(a => a.action_type === type);
+            return action ? parseInt(action.value) : 0;
+        };
+
+        const getActionRevenue = (type) => {
+            const action = actionValues.find(a => a.action_type === type);
+            return action ? parseFloat(action.value) : 0;
+        };
+
+        const getCPA = (type) => {
+            const action = costPerAction.find(a => a.action_type === type);
+            return action ? parseFloat(action.value) : 0;
+        };
+
+        // Build funnel data
+        const funnel = funnelStages.map((stage, index) => {
+            const count = getActionValue(stage);
+            const prevCount = index > 0 ? getActionValue(funnelStages[index - 1]) : count;
+            const dropoff = prevCount > 0 ? ((prevCount - count) / prevCount * 100).toFixed(1) : 0;
+            const conversionRate = index > 0 && prevCount > 0 ? ((count / prevCount) * 100).toFixed(1) : 100;
+
+            return {
+                stage,
+                label: stage.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
+                count,
+                costPerAction: getCPA(stage),
+                revenue: getActionRevenue(stage),
+                dropoffRate: parseFloat(dropoff),
+                conversionRate: parseFloat(conversionRate)
+            };
+        });
+
+        // Calculate overall funnel metrics
+        const landingPageViews = getActionValue('landing_page_view') || getActionValue('link_click');
+        const purchases = getActionValue('purchase');
+        const purchaseValue = getActionRevenue('purchase');
+
+        const overallConversionRate = landingPageViews > 0
+            ? ((purchases / landingPageViews) * 100).toFixed(2)
+            : 0;
+
+        const roas = totalSpend > 0 ? (purchaseValue / totalSpend).toFixed(2) : 0;
+
+        // Identify bottleneck (stage with highest dropoff)
+        const bottleneck = funnel
+            .filter(s => s.count > 0)
+            .reduce((max, stage) => stage.dropoffRate > (max?.dropoffRate || 0) ? stage : max, null);
+
+        res.json({
+            success: true,
+            data: {
+                funnel,
+                summary: {
+                    totalSpend,
+                    landingPageViews,
+                    purchases,
+                    purchaseValue,
+                    overallConversionRate: parseFloat(overallConversionRate),
+                    roas: parseFloat(roas),
+                    costPerPurchase: getCPA('purchase')
+                },
+                bottleneck: bottleneck ? {
+                    stage: bottleneck.label,
+                    dropoffRate: bottleneck.dropoffRate,
+                    insight: `${bottleneck.dropoffRate}% of users drop off at ${bottleneck.label}`
+                } : null,
+                datePreset
+            }
+        });
+    } catch (error) {
+        console.error('Conversion funnel error:', error.response?.data || error.message);
+        res.status(500).json({ success: false, error: error.response?.data?.error?.message || 'Failed to fetch conversion funnel' });
+    }
+}
+
+/**
+ * Get Campaign Intelligence - Deep metrics for campaign optimization
+ */
+export async function getCampaignIntelligence(req, res) {
+    try {
+        const { adAccountId } = req.params;
+        const { datePreset = 'last_30d' } = req.query;
+        const accessToken = await authService.getAccessToken(req.user.userId);
+
+        if (!accessToken) {
+            return res.status(401).json({ success: false, error: 'Access token not found' });
+        }
+
+        const accountId = adAccountId.startsWith('act_') ? adAccountId : `act_${adAccountId}`;
+
+        // Fetch multiple breakdowns in parallel
+        const [campaignsRes, hourlyRes, weekdayRes, placementMatrixRes] = await Promise.allSettled([
+            // Campaign-level performance
+            axios.get(`${GRAPH_API_BASE}/${accountId}/campaigns`, {
+                params: {
+                    access_token: accessToken,
+                    fields: 'id,name,status,objective,daily_budget,lifetime_budget,insights.date_preset(' + datePreset + '){spend,impressions,reach,clicks,actions,action_values,cpc,cpm,ctr,frequency,purchase_roas}',
+                    limit: 50
+                }
+            }),
+            // Hourly breakdown for timing optimization
+            axios.get(`${GRAPH_API_BASE}/${accountId}/insights`, {
+                params: {
+                    access_token: accessToken,
+                    fields: 'spend,impressions,clicks,actions',
+                    date_preset: datePreset,
+                    time_increment: 1,
+                    breakdowns: 'hourly_stats_aggregated_by_advertiser_time_zone'
+                }
+            }),
+            // Day of week performance
+            axios.get(`${GRAPH_API_BASE}/${accountId}/insights`, {
+                params: {
+                    access_token: accessToken,
+                    fields: 'spend,impressions,clicks,ctr,actions',
+                    date_preset: datePreset,
+                    time_increment: 1
+                }
+            }),
+            // Placement matrix
+            axios.get(`${GRAPH_API_BASE}/${accountId}/insights`, {
+                params: {
+                    access_token: accessToken,
+                    fields: 'spend,impressions,clicks,reach,actions,action_values',
+                    date_preset: datePreset,
+                    breakdowns: 'publisher_platform,platform_position'
+                }
+            })
+        ]);
+
+        // Process campaigns
+        let campaigns = [];
+        if (campaignsRes.status === 'fulfilled') {
+            campaigns = (campaignsRes.value.data.data || []).map(c => {
+                const insights = c.insights?.data?.[0] || {};
+                const purchases = (insights.actions || []).find(a => a.action_type === 'purchase');
+                const purchaseValue = (insights.action_values || []).find(a => a.action_type === 'purchase');
+                const spend = parseFloat(insights.spend || 0);
+                const purchaseCount = purchases ? parseInt(purchases.value) : 0;
+                const revenue = purchaseValue ? parseFloat(purchaseValue.value) : 0;
+
+                // Calculate efficiency score: (ROAS × Conversion Volume) / Spend
+                const roas = insights.purchase_roas?.[0]?.value || (spend > 0 ? revenue / spend : 0);
+                const efficiencyScore = spend > 0 ? ((roas * purchaseCount) / spend * 100).toFixed(2) : 0;
+                const budgetUtilization = c.daily_budget ? ((spend / (parseFloat(c.daily_budget) / 100 * 30)) * 100).toFixed(1) : null;
+
+                return {
+                    id: c.id,
+                    name: c.name,
+                    status: c.status,
+                    objective: c.objective,
+                    spend,
+                    impressions: parseInt(insights.impressions || 0),
+                    clicks: parseInt(insights.clicks || 0),
+                    ctr: parseFloat(insights.ctr || 0),
+                    cpc: parseFloat(insights.cpc || 0),
+                    frequency: parseFloat(insights.frequency || 0),
+                    purchases: purchaseCount,
+                    revenue,
+                    roas: parseFloat(roas),
+                    efficiencyScore: parseFloat(efficiencyScore),
+                    budgetUtilization: budgetUtilization ? parseFloat(budgetUtilization) : null
+                };
+            }).sort((a, b) => b.efficiencyScore - a.efficiencyScore);
+        }
+
+        // Process hourly data
+        let hourlyPerformance = [];
+        if (hourlyRes.status === 'fulfilled') {
+            const hourlyData = hourlyRes.value.data.data || [];
+            // Group by hour
+            const hourlyMap = {};
+            hourlyData.forEach(d => {
+                const hour = d.hourly_stats_aggregated_by_advertiser_time_zone;
+                if (!hourlyMap[hour]) {
+                    hourlyMap[hour] = { spend: 0, impressions: 0, clicks: 0, conversions: 0, count: 0 };
+                }
+                hourlyMap[hour].spend += parseFloat(d.spend || 0);
+                hourlyMap[hour].impressions += parseInt(d.impressions || 0);
+                hourlyMap[hour].clicks += parseInt(d.clicks || 0);
+                const purchases = (d.actions || []).find(a => a.action_type === 'purchase');
+                hourlyMap[hour].conversions += purchases ? parseInt(purchases.value) : 0;
+                hourlyMap[hour].count++;
+            });
+
+            hourlyPerformance = Object.entries(hourlyMap).map(([hour, data]) => ({
+                hour: parseInt(hour.split(':')[0]) || 0,
+                avgSpend: data.count > 0 ? (data.spend / data.count).toFixed(2) : 0,
+                avgImpressions: data.count > 0 ? Math.round(data.impressions / data.count) : 0,
+                avgClicks: data.count > 0 ? Math.round(data.clicks / data.count) : 0,
+                conversions: data.conversions
+            })).sort((a, b) => a.hour - b.hour);
+        }
+
+        // Process day of week data
+        let dayOfWeekPerformance = [];
+        if (weekdayRes.status === 'fulfilled') {
+            const dailyData = weekdayRes.value.data.data || [];
+            const dayMap = { 0: 'Sunday', 1: 'Monday', 2: 'Tuesday', 3: 'Wednesday', 4: 'Thursday', 5: 'Friday', 6: 'Saturday' };
+            const dayStats = { Sunday: { spend: 0, clicks: 0, impressions: 0, count: 0 }, Monday: { spend: 0, clicks: 0, impressions: 0, count: 0 }, Tuesday: { spend: 0, clicks: 0, impressions: 0, count: 0 }, Wednesday: { spend: 0, clicks: 0, impressions: 0, count: 0 }, Thursday: { spend: 0, clicks: 0, impressions: 0, count: 0 }, Friday: { spend: 0, clicks: 0, impressions: 0, count: 0 }, Saturday: { spend: 0, clicks: 0, impressions: 0, count: 0 } };
+
+            dailyData.forEach(d => {
+                const date = new Date(d.date_start);
+                const dayName = dayMap[date.getDay()];
+                if (dayStats[dayName]) {
+                    dayStats[dayName].spend += parseFloat(d.spend || 0);
+                    dayStats[dayName].clicks += parseInt(d.clicks || 0);
+                    dayStats[dayName].impressions += parseInt(d.impressions || 0);
+                    dayStats[dayName].count++;
+                }
+            });
+
+            dayOfWeekPerformance = Object.entries(dayStats).map(([day, data]) => ({
+                day,
+                avgSpend: data.count > 0 ? (data.spend / data.count).toFixed(2) : 0,
+                avgClicks: data.count > 0 ? Math.round(data.clicks / data.count) : 0,
+                avgImpressions: data.count > 0 ? Math.round(data.impressions / data.count) : 0,
+                ctr: data.impressions > 0 ? ((data.clicks / data.impressions) * 100).toFixed(2) : 0
+            }));
+        }
+
+        // Process placement matrix
+        let placementMatrix = [];
+        if (placementMatrixRes.status === 'fulfilled') {
+            placementMatrix = (placementMatrixRes.value.data.data || []).map(d => {
+                const purchases = (d.actions || []).find(a => a.action_type === 'purchase');
+                const purchaseValue = (d.action_values || []).find(a => a.action_type === 'purchase');
+                const spend = parseFloat(d.spend || 0);
+                const revenue = purchaseValue ? parseFloat(purchaseValue.value) : 0;
+
+                return {
+                    platform: d.publisher_platform,
+                    position: d.platform_position,
+                    spend,
+                    impressions: parseInt(d.impressions || 0),
+                    clicks: parseInt(d.clicks || 0),
+                    reach: parseInt(d.reach || 0),
+                    purchases: purchases ? parseInt(purchases.value) : 0,
+                    revenue,
+                    roas: spend > 0 ? (revenue / spend).toFixed(2) : 0,
+                    cpc: d.clicks > 0 ? (spend / parseInt(d.clicks)).toFixed(2) : 0
+                };
+            }).sort((a, b) => parseFloat(b.roas) - parseFloat(a.roas));
+        }
+
+        // Find best performing times
+        const bestHour = hourlyPerformance.length > 0
+            ? hourlyPerformance.reduce((max, h) => h.conversions > (max?.conversions || 0) ? h : max, null)
+            : null;
+        const bestDay = dayOfWeekPerformance.length > 0
+            ? dayOfWeekPerformance.reduce((max, d) => parseFloat(d.ctr) > parseFloat(max?.ctr || 0) ? d : max, null)
+            : null;
+        const bestPlacement = placementMatrix.length > 0 ? placementMatrix[0] : null;
+
+        res.json({
+            success: true,
+            data: {
+                campaigns: campaigns.slice(0, 20),
+                topCampaign: campaigns.length > 0 ? campaigns[0] : null,
+                hourlyPerformance,
+                dayOfWeekPerformance,
+                placementMatrix: placementMatrix.slice(0, 15),
+                recommendations: {
+                    bestHour: bestHour ? `${bestHour.hour}:00 has highest conversions` : null,
+                    bestDay: bestDay ? `${bestDay.day} has ${bestDay.ctr}% CTR` : null,
+                    bestPlacement: bestPlacement ? `${bestPlacement.platform} ${bestPlacement.position} has ${bestPlacement.roas}x ROAS` : null
+                },
+                datePreset
+            }
+        });
+    } catch (error) {
+        console.error('Campaign intelligence error:', error.response?.data || error.message);
+        res.status(500).json({ success: false, error: error.response?.data?.error?.message || 'Failed to fetch campaign intelligence' });
+    }
+}

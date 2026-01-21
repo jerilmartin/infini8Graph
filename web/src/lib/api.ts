@@ -52,7 +52,8 @@ export const instagramApi = {
     getReels: () => api.get('/instagram/reels'),
     getPosts: (limit = 50) => api.get(`/instagram/posts?limit=${limit}`),
     exportData: (format = 'json', metrics = 'overview,growth,posts') =>
-        api.get(`/instagram/export?format=${format}&metrics=${metrics}`)
+        api.get(`/instagram/export?format=${format}&metrics=${metrics}`),
+    getContentIntelligence: () => api.get('/instagram/content-intelligence')
 };
 
 export const adsApi = {
@@ -63,7 +64,11 @@ export const adsApi = {
     getCampaigns: (adAccountId: string) => api.get(`/ads/accounts/${adAccountId}/campaigns`),
     getAdSets: (adAccountId: string) => api.get(`/ads/accounts/${adAccountId}/adsets`),
     getAds: (adAccountId: string) => api.get(`/ads/accounts/${adAccountId}/ads`),
-    getPageInsights: () => api.get('/ads/page-insights')
+    getPageInsights: () => api.get('/ads/page-insights'),
+    getConversionFunnel: (adAccountId: string, datePreset = 'last_90d') =>
+        api.get(`/ads/accounts/${adAccountId}/funnel?datePreset=${datePreset}`),
+    getCampaignIntelligence: (adAccountId: string, datePreset = 'last_30d') =>
+        api.get(`/ads/accounts/${adAccountId}/intelligence?datePreset=${datePreset}`)
 };
 
 export default api;

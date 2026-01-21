@@ -135,8 +135,9 @@ class InstagramService {
      * @param {string} after - Cursor for pagination
      */
     async getMedia(limit = 25, after = null) {
+        const basicFields = 'id,caption,media_type,media_url,thumbnail_url,permalink,timestamp,like_count,comments_count';
         const params = {
-            fields: 'id,caption,media_type,media_url,thumbnail_url,permalink,timestamp,like_count,comments_count,insights.metric(impressions,reach,saved)',
+            fields: `${basicFields},insights.metric(impressions,reach,saved)`,
             limit: limit
         };
 
@@ -144,7 +145,30 @@ class InstagramService {
             params.after = after;
         }
 
-        return this.apiRequest(`/${this.instagramUserId}/media`, params);
+        try {
+            return await this.apiRequest(`/${this.instagramUserId}/media`, params);
+        } catch (error) {
+            // Check for errors that indicate insights are unavailable:
+            // - "Invalid parameter" (generic error when insights fail)
+            // - "Media posted before business account conversion"
+            const errorMsg = error.message || '';
+            const isInsightsError = errorMsg.includes('Invalid parameter') ||
+                errorMsg.includes('business account') ||
+                errorMsg.includes('Unsupported get request');
+
+            if (isInsightsError) {
+                console.warn('Recovering from insights error - fetching basic media data only. Error was:', errorMsg);
+                // Retry without insights
+                const fallbackParams = {
+                    fields: basicFields,
+                    limit: limit,
+                    ...(after && { after })
+                };
+                return await this.apiRequest(`/${this.instagramUserId}/media`, fallbackParams);
+            }
+
+            throw error;
+        }
     }
 
     /**

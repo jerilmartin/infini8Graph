@@ -12,7 +12,7 @@ export async function getOverview(req, res) {
         const data = await analytics.getOverview();
         res.json({ success: true, data });
     } catch (error) {
-        console.error('Overview error:', error);
+        console.error('Overview error:', error.message);
         res.status(500).json({ success: false, error: error.message });
     }
 }
@@ -97,4 +97,16 @@ export async function exportData(req, res) {
     }
 }
 
-export default { getOverview, getGrowth, getBestTime, getHashtags, getReels, getPosts, exportData };
+export async function getContentIntelligence(req, res) {
+    try {
+        const analytics = await getAnalyticsService(req);
+        const data = await analytics.getContentIntelligence();
+        res.json({ success: true, data });
+    } catch (error) {
+        console.error('Content intelligence error:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+}
+
+export default { getOverview, getGrowth, getBestTime, getHashtags, getReels, getPosts, exportData, getContentIntelligence };
+

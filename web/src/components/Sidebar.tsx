@@ -18,7 +18,8 @@ import {
     Menu,
     X,
     Megaphone,
-    Instagram
+    Instagram,
+    Lightbulb
 } from 'lucide-react';
 
 const navSections = [
@@ -31,6 +32,7 @@ const navSections = [
             { href: '/reels', icon: Film, label: 'Reels' },
             { href: '/best-time', icon: Clock, label: 'Best Time' },
             { href: '/hashtags', icon: Hash, label: 'Hashtags' },
+            { href: '/insights', icon: Lightbulb, label: 'Content Intel' },
         ]
     },
     {

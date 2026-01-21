@@ -361,9 +361,27 @@ class AnalyticsService {
             }))
             .sort((a, b) => b.avgEngagement - a.avgEngagement);
 
+        // Calculate reach attribution per hashtag (which hashtags expand reach)
+        const hashtagReachAttribution = hashtagList.map(h => {
+            const postsWithTag = media.filter(p => (p.caption || '').toLowerCase().includes(h.tag));
+            const avgReach = postsWithTag.length > 0
+                ? postsWithTag.reduce((sum, p) => sum + p.reach, 0) / postsWithTag.length
+                : 0;
+            const overallAvgReach = media.length > 0
+                ? media.reduce((sum, p) => sum + p.reach, 0) / media.length
+                : 0;
+            return {
+                tag: h.tag,
+                avgReach: Math.round(avgReach),
+                reachMultiplier: overallAvgReach > 0 ? (avgReach / overallAvgReach).toFixed(2) : 0,
+                usageCount: h.usageCount
+            };
+        }).sort((a, b) => parseFloat(b.reachMultiplier) - parseFloat(a.reachMultiplier));
+
         const hashtags = {
             topPerforming: hashtagList.slice(0, 20),
             mostUsed: [...hashtagList].sort((a, b) => b.usageCount - a.usageCount).slice(0, 20),
+            reachExpanders: hashtagReachAttribution.filter(h => parseFloat(h.reachMultiplier) > 1).slice(0, 10),
             totalHashtagsUsed: hashtagList.length,
             avgHashtagsPerPost: media.length > 0
                 ? (hashtagList.reduce((sum, h) => sum + h.usageCount, 0) / media.length).toFixed(1)
@@ -374,6 +392,235 @@ class AnalyticsService {
 
         await this.updateCache('hashtags', 'current', hashtags);
         return hashtags;
+    }
+
+    /**
+     * Get deep content intelligence metrics
+     * Includes: format battle, caption analysis, viral coefficient, save-to-like ratio
+     */
+    async getContentIntelligence() {
+        const cached = await this.checkCache('content_intelligence');
+        if (cached) return cached;
+
+        const profile = await this.instagram.getProfile();
+        const media = await this.instagram.getAllMediaWithInsights(100);
+
+        // ============ 1. CONTENT FORMAT BATTLE ============
+        const formatStats = {};
+        const formats = ['IMAGE', 'VIDEO', 'CAROUSEL_ALBUM', 'REEL'];
+
+        formats.forEach(format => {
+            const posts = media.filter(p => p.mediaType === format);
+            if (posts.length === 0) {
+                formatStats[format] = null;
+                return;
+            }
+
+            const totalEngagement = posts.reduce((s, p) => s + p.engagement, 0);
+            const totalReach = posts.reduce((s, p) => s + p.reach, 0);
+            const totalSaved = posts.reduce((s, p) => s + p.saved, 0);
+
+            formatStats[format] = {
+                count: posts.length,
+                totalEngagement,
+                avgEngagement: Math.round(totalEngagement / posts.length),
+                avgReach: Math.round(totalReach / posts.length),
+                avgSaved: Math.round(totalSaved / posts.length),
+                engagementRate: profile.followers_count > 0
+                    ? ((totalEngagement / posts.length) / profile.followers_count * 100).toFixed(2)
+                    : 0
+            };
+        });
+
+        // Determine winning format
+        const formatRanking = Object.entries(formatStats)
+            .filter(([_, stats]) => stats !== null)
+            .sort((a, b) => b[1].avgEngagement - a[1].avgEngagement)
+            .map(([format, stats], idx) => ({ format, ...stats, rank: idx + 1 }));
+
+        // ============ 2. CAPTION LENGTH ANALYSIS ============
+        const captionBuckets = {
+            'short': { min: 0, max: 50, posts: [], label: '0-50 chars' },
+            'medium': { min: 51, max: 150, posts: [], label: '51-150 chars' },
+            'long': { min: 151, max: 300, posts: [], label: '151-300 chars' },
+            'veryLong': { min: 301, max: Infinity, posts: [], label: '300+ chars' }
+        };
+
+        media.forEach(post => {
+            const len = (post.caption || '').length;
+            if (len <= 50) captionBuckets.short.posts.push(post);
+            else if (len <= 150) captionBuckets.medium.posts.push(post);
+            else if (len <= 300) captionBuckets.long.posts.push(post);
+            else captionBuckets.veryLong.posts.push(post);
+        });
+
+        const captionAnalysis = Object.entries(captionBuckets).map(([key, bucket]) => ({
+            bucket: key,
+            label: bucket.label,
+            count: bucket.posts.length,
+            avgEngagement: bucket.posts.length > 0
+                ? Math.round(bucket.posts.reduce((s, p) => s + p.engagement, 0) / bucket.posts.length)
+                : 0,
+            avgReach: bucket.posts.length > 0
+                ? Math.round(bucket.posts.reduce((s, p) => s + p.reach, 0) / bucket.posts.length)
+                : 0
+        })).sort((a, b) => b.avgEngagement - a.avgEngagement);
+
+        const optimalCaptionLength = captionAnalysis.length > 0 ? captionAnalysis[0].label : 'N/A';
+
+        // ============ 3. VIRAL COEFFICIENT (Shares/Reach) ============
+        // Note: Instagram API doesn't provide shares for all post types, use saves as proxy
+        const viralPosts = media.map(post => ({
+            id: post.id,
+            viralCoefficient: post.reach > 0 ? (post.saved / post.reach).toFixed(4) : 0,
+            shareability: post.reach > 0 ? ((post.saved + post.commentsCount) / post.reach * 100).toFixed(2) : 0,
+            saved: post.saved,
+            reach: post.reach,
+            type: post.mediaType
+        })).sort((a, b) => parseFloat(b.viralCoefficient) - parseFloat(a.viralCoefficient));
+
+        const avgViralCoefficient = media.length > 0
+            ? (viralPosts.reduce((s, p) => s + parseFloat(p.viralCoefficient), 0) / media.length).toFixed(4)
+            : 0;
+
+        // ============ 4. SAVE-TO-LIKE RATIO ============
+        const saveToLikeAnalysis = media.map(post => ({
+            id: post.id,
+            saveToLikeRatio: post.likeCount > 0 ? (post.saved / post.likeCount).toFixed(3) : 0,
+            saved: post.saved,
+            likes: post.likeCount,
+            type: post.mediaType,
+            isHighValue: post.likeCount > 0 && (post.saved / post.likeCount) > 0.05 // 5%+ is high value
+        })).sort((a, b) => parseFloat(b.saveToLikeRatio) - parseFloat(a.saveToLikeRatio));
+
+        const avgSaveToLikeRatio = media.length > 0
+            ? (saveToLikeAnalysis.reduce((s, p) => s + parseFloat(p.saveToLikeRatio), 0) / media.length).toFixed(3)
+            : 0;
+
+        const highValueContentCount = saveToLikeAnalysis.filter(p => p.isHighValue).length;
+
+        // ============ 5. FIRST HOUR PERFORMANCE / ENGAGEMENT VELOCITY ============
+        // Calculate hours since post and engagement velocity
+        const now = new Date();
+        const velocityAnalysis = media.map(post => {
+            const postDate = new Date(post.timestamp);
+            const hoursSincePost = Math.max(1, (now - postDate) / (1000 * 60 * 60));
+            const engagementVelocity = post.engagement / hoursSincePost;
+
+            return {
+                id: post.id,
+                hoursSincePost: Math.round(hoursSincePost),
+                engagement: post.engagement,
+                engagementVelocity: engagementVelocity.toFixed(2),
+                type: post.mediaType,
+                timestamp: post.timestamp
+            };
+        }).sort((a, b) => parseFloat(b.engagementVelocity) - parseFloat(a.engagementVelocity));
+
+        // Identify "fast starters" (high velocity in first 24 hours)
+        const recentPosts = velocityAnalysis.filter(p => p.hoursSincePost <= 24);
+        const fastStarters = recentPosts.filter(p => parseFloat(p.engagementVelocity) > 10);
+
+        // ============ 6. CONTENT QUALITY SCORE ============
+        // Composite score based on all metrics with detailed breakdown
+        const contentScores = media.map(post => {
+            const engagementScore = post.engagement / Math.max(profile.followers_count, 1) * 1000;
+            const reachScore = post.reach / Math.max(profile.followers_count, 1) * 100;
+            const saveScore = post.saved * 10; // Saves are valuable
+            const viralScore = post.reach > 0 ? (post.saved / post.reach) * 1000 : 0;
+            const commentScore = post.commentsCount * 20; // Comments indicate deeper engagement
+
+            const totalScore = (engagementScore * 0.25) + (reachScore * 0.25) + (saveScore * 0.2) + (viralScore * 0.15) + (commentScore * 0.15);
+
+            // Determine strongest factor
+            const factors = [
+                { name: 'High Engagement', score: engagementScore, threshold: 50 },
+                { name: 'Wide Reach', score: reachScore, threshold: 50 },
+                { name: 'High Saves', score: saveScore, threshold: 30 },
+                { name: 'Viral Potential', score: viralScore, threshold: 20 },
+                { name: 'Discussion Driver', score: commentScore, threshold: 20 }
+            ];
+            const topFactors = factors.filter(f => f.score >= f.threshold).sort((a, b) => b.score - a.score).slice(0, 2);
+
+            return {
+                id: post.id,
+                qualityScore: Math.round(totalScore),
+                type: post.mediaType,
+                thumbnail: post.thumbnailUrl || post.mediaUrl,
+                caption: (post.caption || '').substring(0, 100) + ((post.caption?.length > 100) ? '...' : ''),
+                permalink: post.permalink,
+                timestamp: post.timestamp,
+                engagement: post.engagement,
+                likes: post.likeCount,
+                comments: post.commentsCount,
+                reach: post.reach,
+                saved: post.saved,
+                // Why it scored well
+                scoreBreakdown: {
+                    engagementScore: Math.round(engagementScore),
+                    reachScore: Math.round(reachScore),
+                    saveScore: Math.round(saveScore),
+                    viralScore: Math.round(viralScore),
+                    commentScore: Math.round(commentScore)
+                },
+                topFactors: topFactors.map(f => f.name),
+                insight: topFactors.length > 0
+                    ? `Strong: ${topFactors.map(f => f.name).join(', ')}`
+                    : 'Average performer'
+            };
+        }).sort((a, b) => b.qualityScore - a.qualityScore);
+
+        const avgQualityScore = media.length > 0
+            ? Math.round(contentScores.reduce((s, p) => s + p.qualityScore, 0) / media.length)
+            : 0;
+
+        const intelligence = {
+            formatBattle: {
+                stats: formatStats,
+                ranking: formatRanking,
+                winner: formatRanking.length > 0 ? formatRanking[0].format : null,
+                insight: formatRanking.length > 0
+                    ? `${formatRanking[0].format} outperforms other formats with ${formatRanking[0].avgEngagement} avg engagement`
+                    : 'Not enough data'
+            },
+            captionAnalysis: {
+                buckets: captionAnalysis,
+                optimalLength: optimalCaptionLength,
+                insight: `Posts with ${optimalCaptionLength} captions perform best`
+            },
+            viralCoefficient: {
+                average: parseFloat(avgViralCoefficient),
+                topViral: viralPosts.slice(0, 5),
+                insight: parseFloat(avgViralCoefficient) > 0.01 ? 'Good shareability' : 'Consider creating more shareable content'
+            },
+            saveToLike: {
+                average: parseFloat(avgSaveToLikeRatio),
+                highValueCount: highValueContentCount,
+                topHighValue: saveToLikeAnalysis.slice(0, 5),
+                insight: `${highValueContentCount} posts are high-value reference content (5%+ save rate)`
+            },
+            engagementVelocity: {
+                topPerformers: velocityAnalysis.slice(0, 5),
+                fastStarters: fastStarters.length,
+                insight: `${fastStarters.length} recent posts gained traction quickly`
+            },
+            contentQuality: {
+                averageScore: avgQualityScore,
+                topContent: contentScores.slice(0, 5),
+                bottomContent: contentScores.slice(-3),
+                distribution: {
+                    excellent: contentScores.filter(p => p.qualityScore >= 80).length,
+                    good: contentScores.filter(p => p.qualityScore >= 50 && p.qualityScore < 80).length,
+                    average: contentScores.filter(p => p.qualityScore >= 20 && p.qualityScore < 50).length,
+                    poor: contentScores.filter(p => p.qualityScore < 20).length
+                }
+            },
+            postsAnalyzed: media.length,
+            lastUpdated: new Date().toISOString()
+        };
+
+        await this.updateCache('content_intelligence', 'current', intelligence);
+        return intelligence;
     }
 
     /**

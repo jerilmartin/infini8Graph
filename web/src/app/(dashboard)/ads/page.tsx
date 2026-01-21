@@ -6,7 +6,8 @@ import { adsApi } from '@/lib/api';
 import {
     Megaphone, IndianRupee, Eye, MousePointer, Users, BarChart3,
     Play, Target, Layers, TrendingUp, HelpCircle, Smartphone, Monitor,
-    Globe, MapPin, Award, Zap, DollarSign, ExternalLink, ChevronDown, ChevronUp
+    Globe, MapPin, Award, Zap, DollarSign, ExternalLink, ChevronDown, ChevronUp,
+    Filter, Calendar, Clock, ArrowRight, ShoppingCart, CreditCard, Package, Brain
 } from 'lucide-react';
 import {
     AreaChart, Area, BarChart, Bar, PieChart as RechartsPie, Pie, Cell,
@@ -193,7 +194,7 @@ function TabButton({ active, onClick, children }: { active: boolean; onClick: ()
 
 export default function AdsPage() {
     const [selectedAccount, setSelectedAccount] = useState<string | null>(null);
-    const [activeTab, setActiveTab] = useState<'overview' | 'campaigns' | 'demographics' | 'placements' | 'geo'>('overview');
+    const [activeTab, setActiveTab] = useState<'overview' | 'funnel' | 'intelligence' | 'campaigns' | 'demographics' | 'placements' | 'geo'>('overview');
 
     // Fetch accounts
     const { data: accountsData, isLoading: accountsLoading } = useQuery({
@@ -227,6 +228,28 @@ export default function AdsPage() {
             return res.data;
         },
         enabled: !!effectiveAccount && activeTab === 'campaigns'
+    });
+
+    // Fetch conversion funnel
+    const { data: funnelData, isLoading: funnelLoading } = useQuery({
+        queryKey: ['funnel', effectiveAccount],
+        queryFn: async () => {
+            if (!effectiveAccount) return null;
+            const res = await adsApi.getConversionFunnel(effectiveAccount);
+            return res.data;
+        },
+        enabled: !!effectiveAccount && activeTab === 'funnel'
+    });
+
+    // Fetch campaign intelligence
+    const { data: intelligenceData, isLoading: intelligenceLoading } = useQuery({
+        queryKey: ['intelligence', effectiveAccount],
+        queryFn: async () => {
+            if (!effectiveAccount) return null;
+            const res = await adsApi.getCampaignIntelligence(effectiveAccount);
+            return res.data;
+        },
+        enabled: !!effectiveAccount && activeTab === 'intelligence'
     });
 
     if (accountsLoading) {
@@ -355,6 +378,12 @@ export default function AdsPage() {
             <div style={{ display: 'flex', gap: 8, marginBottom: 24, flexWrap: 'wrap' }}>
                 <TabButton active={activeTab === 'overview'} onClick={() => setActiveTab('overview')}>
                     <BarChart3 size={14} /> Overview
+                </TabButton>
+                <TabButton active={activeTab === 'funnel'} onClick={() => setActiveTab('funnel')}>
+                    <Filter size={14} /> Funnel
+                </TabButton>
+                <TabButton active={activeTab === 'intelligence'} onClick={() => setActiveTab('intelligence')}>
+                    <Brain size={14} /> Intelligence
                 </TabButton>
                 <TabButton active={activeTab === 'campaigns'} onClick={() => setActiveTab('campaigns')}>
                     <Target size={14} /> Campaigns
@@ -823,6 +852,317 @@ export default function AdsPage() {
                             <p className="text-muted">No region data available</p>
                         )}
                     </SectionCard>
+                </div>
+            )}
+
+            {/* ==================== FUNNEL TAB ==================== */}
+            {activeTab === 'funnel' && (
+                <div style={{ display: 'grid', gap: 20 }}>
+                    {funnelLoading ? (
+                        <div style={{ textAlign: 'center', padding: 40 }}>
+                            <div className="spinner" style={{ margin: '0 auto 16px' }}></div>
+                            <p className="text-muted">Loading funnel data...</p>
+                        </div>
+                    ) : funnelData?.data ? (
+                        <>
+                            {/* Funnel Summary */}
+                            <SectionCard
+                                title="Conversion Funnel Overview"
+                                subtitle="Track user journey from landing page to purchase"
+                            >
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 24 }}>
+                                    <div style={{ padding: 16, background: 'var(--background)', borderRadius: 8, textAlign: 'center' }}>
+                                        <div className="text-muted" style={{ fontSize: 12, marginBottom: 4 }}>Total Spend</div>
+                                        <div style={{ fontSize: 24, fontWeight: 700, color: '#10b981' }}>
+                                            {formatCurrency(funnelData.data.summary?.totalSpend * 100 || 0)}
+                                        </div>
+                                    </div>
+                                    <div style={{ padding: 16, background: 'var(--background)', borderRadius: 8, textAlign: 'center' }}>
+                                        <div className="text-muted" style={{ fontSize: 12, marginBottom: 4 }}>Overall Conversion</div>
+                                        <div style={{ fontSize: 24, fontWeight: 700, color: '#6366f1' }}>
+                                            {funnelData.data.summary?.overallConversionRate || 0}%
+                                        </div>
+                                    </div>
+                                    <div style={{ padding: 16, background: 'var(--background)', borderRadius: 8, textAlign: 'center' }}>
+                                        <div className="text-muted" style={{ fontSize: 12, marginBottom: 4 }}>ROAS</div>
+                                        <div style={{ fontSize: 24, fontWeight: 700, color: funnelData.data.summary?.roas > 1 ? '#10b981' : '#f59e0b' }}>
+                                            {funnelData.data.summary?.roas || 0}x
+                                        </div>
+                                    </div>
+                                    <div style={{ padding: 16, background: 'var(--background)', borderRadius: 8, textAlign: 'center' }}>
+                                        <div className="text-muted" style={{ fontSize: 12, marginBottom: 4 }}>Cost/Purchase</div>
+                                        <div style={{ fontSize: 24, fontWeight: 700, color: '#ec4899' }}>
+                                            {formatCurrency(funnelData.data.summary?.costPerPurchase * 100 || 0)}
+                                        </div>
+                                    </div>
+                                </div>
+                            </SectionCard>
+
+                            {/* Visual Funnel */}
+                            <SectionCard title="Conversion Funnel Visualization" subtitle="Watch where users drop off">
+                                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0 }}>
+                                    {(funnelData.data.funnel || []).map((stage: any, i: number) => {
+                                        const maxCount = Math.max(...(funnelData.data.funnel || []).map((s: any) => s.count || 1));
+                                        const width = stage.count > 0 ? Math.max(30, (stage.count / maxCount) * 100) : 30;
+                                        const isBottleneck = funnelData.data.bottleneck?.stage === stage.label;
+
+                                        const stageIcons: Record<string, React.ElementType> = {
+                                            'Landing Page View': Eye,
+                                            'View Content': Package,
+                                            'Add To Cart': ShoppingCart,
+                                            'Initiate Checkout': CreditCard,
+                                            'Add Payment Info': CreditCard,
+                                            'Purchase': DollarSign
+                                        };
+                                        const Icon = stageIcons[stage.label] || Target;
+
+                                        return (
+                                            <div key={stage.stage} style={{ width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                                                {/* Stage Bar */}
+                                                <div style={{
+                                                    width: `${width}%`,
+                                                    background: isBottleneck
+                                                        ? 'linear-gradient(135deg, #ef4444, #f87171)'
+                                                        : `linear-gradient(135deg, ${COLORS[i % COLORS.length]}, ${COLORS[(i + 1) % COLORS.length]})`,
+                                                    padding: '16px 20px',
+                                                    borderRadius: 8,
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    justifyContent: 'space-between',
+                                                    color: 'white',
+                                                    minWidth: 300,
+                                                    boxShadow: isBottleneck ? '0 0 0 3px rgba(239, 68, 68, 0.3)' : 'none'
+                                                }}>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                                                        <Icon size={20} />
+                                                        <div>
+                                                            <div style={{ fontWeight: 600, fontSize: 14 }}>{stage.label}</div>
+                                                            <div style={{ fontSize: 11, opacity: 0.8 }}>
+                                                                {formatCurrency(stage.costPerAction * 100 || 0)} per action
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                    <div style={{ textAlign: 'right' }}>
+                                                        <div style={{ fontSize: 20, fontWeight: 700 }}>{formatNumber(stage.count)}</div>
+                                                        {i > 0 && (
+                                                            <div style={{ fontSize: 11, opacity: 0.8 }}>
+                                                                {stage.conversionRate}% from prev
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </div>
+
+                                                {/* Arrow with dropoff */}
+                                                {i < (funnelData.data.funnel?.length || 0) - 1 && (
+                                                    <div style={{
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        gap: 8,
+                                                        padding: '8px 0',
+                                                        color: stage.dropoffRate > 50 ? '#ef4444' : '#94a3b8'
+                                                    }}>
+                                                        <ArrowRight size={16} style={{ transform: 'rotate(90deg)' }} />
+                                                        <span style={{ fontSize: 12, fontWeight: 500 }}>
+                                                            {stage.dropoffRate}% drop off
+                                                        </span>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+
+                                {/* Bottleneck Alert */}
+                                {funnelData.data.bottleneck && (
+                                    <div style={{
+                                        marginTop: 24,
+                                        padding: '16px 20px',
+                                        background: 'linear-gradient(135deg, rgba(239, 68, 68, 0.1), rgba(249, 115, 22, 0.1))',
+                                        borderRadius: 8,
+                                        border: '1px solid rgba(239, 68, 68, 0.3)',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: 12
+                                    }}>
+                                        <Zap size={20} style={{ color: '#ef4444' }} />
+                                        <div>
+                                            <div style={{ fontWeight: 600, color: '#ef4444' }}>Bottleneck Detected</div>
+                                            <div style={{ fontSize: 13 }}>{funnelData.data.bottleneck.insight}</div>
+                                        </div>
+                                    </div>
+                                )}
+                            </SectionCard>
+                        </>
+                    ) : (
+                        <div style={{ textAlign: 'center', padding: 40 }}>
+                            <p className="text-muted">No funnel data available. Ensure you have purchase tracking set up.</p>
+                        </div>
+                    )}
+                </div>
+            )}
+
+            {/* ==================== INTELLIGENCE TAB ==================== */}
+            {activeTab === 'intelligence' && (
+                <div style={{ display: 'grid', gap: 20 }}>
+                    {intelligenceLoading ? (
+                        <div style={{ textAlign: 'center', padding: 40 }}>
+                            <div className="spinner" style={{ margin: '0 auto 16px' }}></div>
+                            <p className="text-muted">Analyzing campaign data...</p>
+                        </div>
+                    ) : intelligenceData?.data ? (
+                        <>
+                            {/* AI Recommendations */}
+                            {intelligenceData.data.recommendations && (
+                                <SectionCard title="🎯 Smart Recommendations" subtitle="AI-powered insights for optimization">
+                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
+                                        {intelligenceData.data.recommendations.bestHour && (
+                                            <div style={{ padding: 16, background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.1), rgba(139, 92, 246, 0.1))', borderRadius: 8 }}>
+                                                <Clock size={20} style={{ color: '#6366f1', marginBottom: 8 }} />
+                                                <div style={{ fontWeight: 600, marginBottom: 4 }}>Best Hour</div>
+                                                <div style={{ fontSize: 13, color: 'var(--muted)' }}>{intelligenceData.data.recommendations.bestHour}</div>
+                                            </div>
+                                        )}
+                                        {intelligenceData.data.recommendations.bestDay && (
+                                            <div style={{ padding: 16, background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.1), rgba(34, 197, 94, 0.1))', borderRadius: 8 }}>
+                                                <Calendar size={20} style={{ color: '#10b981', marginBottom: 8 }} />
+                                                <div style={{ fontWeight: 600, marginBottom: 4 }}>Best Day</div>
+                                                <div style={{ fontSize: 13, color: 'var(--muted)' }}>{intelligenceData.data.recommendations.bestDay}</div>
+                                            </div>
+                                        )}
+                                        {intelligenceData.data.recommendations.bestPlacement && (
+                                            <div style={{ padding: 16, background: 'linear-gradient(135deg, rgba(236, 72, 153, 0.1), rgba(249, 115, 22, 0.1))', borderRadius: 8 }}>
+                                                <Layers size={20} style={{ color: '#ec4899', marginBottom: 8 }} />
+                                                <div style={{ fontWeight: 600, marginBottom: 4 }}>Best Placement</div>
+                                                <div style={{ fontSize: 13, color: 'var(--muted)' }}>{intelligenceData.data.recommendations.bestPlacement}</div>
+                                            </div>
+                                        )}
+                                    </div>
+                                </SectionCard>
+                            )}
+
+                            {/* Day of Week Heatmap */}
+                            {(intelligenceData.data.dayOfWeekPerformance || []).length > 0 && (
+                                <SectionCard title="📅 Day of Week Performance" subtitle="Find your best performing days">
+                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 8 }}>
+                                        {(intelligenceData.data.dayOfWeekPerformance || []).map((day: any) => {
+                                            const maxCtr = Math.max(...(intelligenceData.data.dayOfWeekPerformance || []).map((d: any) => parseFloat(d.ctr) || 0));
+                                            const intensity = maxCtr > 0 ? parseFloat(day.ctr) / maxCtr : 0;
+                                            const bgColor = `rgba(99, 102, 241, ${0.1 + intensity * 0.6})`;
+
+                                            return (
+                                                <div key={day.day} style={{
+                                                    padding: 16,
+                                                    background: bgColor,
+                                                    borderRadius: 8,
+                                                    textAlign: 'center',
+                                                    border: intensity > 0.8 ? '2px solid #6366f1' : 'none'
+                                                }}>
+                                                    <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 8 }}>{day.day.slice(0, 3)}</div>
+                                                    <div style={{ fontSize: 18, fontWeight: 700, color: '#6366f1' }}>{day.ctr}%</div>
+                                                    <div className="text-muted" style={{ fontSize: 10 }}>CTR</div>
+                                                    <div style={{ marginTop: 8, fontSize: 11 }}>
+                                                        {formatNumber(day.avgClicks)} clicks
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </SectionCard>
+                            )}
+
+                            {/* Placement ROAS Matrix */}
+                            {(intelligenceData.data.placementMatrix || []).length > 0 && (
+                                <SectionCard title="📊 Placement ROAS Matrix" subtitle="Find your most profitable placements">
+                                    <div style={{ overflowX: 'auto' }}>
+                                        <table className="table">
+                                            <thead>
+                                                <tr>
+                                                    <th>Platform</th>
+                                                    <th>Position</th>
+                                                    <th>ROAS</th>
+                                                    <th>Spend</th>
+                                                    <th>Revenue</th>
+                                                    <th>CPC</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {(intelligenceData.data.placementMatrix || []).slice(0, 10).map((p: any, i: number) => (
+                                                    <tr key={i}>
+                                                        <td style={{ fontWeight: 500, textTransform: 'capitalize' }}>{p.platform}</td>
+                                                        <td style={{ textTransform: 'capitalize' }}>{(p.position || '').replace(/_/g, ' ')}</td>
+                                                        <td>
+                                                            <span style={{
+                                                                padding: '4px 10px',
+                                                                borderRadius: 20,
+                                                                background: parseFloat(p.roas) >= 1 ? '#dcfce7' : '#fee2e2',
+                                                                color: parseFloat(p.roas) >= 1 ? '#166534' : '#991b1b',
+                                                                fontWeight: 600,
+                                                                fontSize: 13
+                                                            }}>
+                                                                {p.roas}x
+                                                            </span>
+                                                        </td>
+                                                        <td>{formatCurrency(p.spend * 100)}</td>
+                                                        <td>{formatCurrency(p.revenue * 100)}</td>
+                                                        <td>{formatCurrency(parseFloat(p.cpc) * 100)}</td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </SectionCard>
+                            )}
+
+                            {/* Top Campaigns by Efficiency */}
+                            {(intelligenceData.data.campaigns || []).length > 0 && (
+                                <SectionCard title="🏆 Top Campaigns by Efficiency" subtitle="Campaigns ranked by our efficiency score">
+                                    <div style={{ display: 'grid', gap: 12 }}>
+                                        {(intelligenceData.data.campaigns || []).slice(0, 5).map((c: any, i: number) => (
+                                            <div key={c.id} style={{
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: 16,
+                                                padding: 16,
+                                                background: 'var(--background)',
+                                                borderRadius: 8,
+                                                borderLeft: `4px solid ${COLORS[i % COLORS.length]}`
+                                            }}>
+                                                <div style={{
+                                                    width: 32,
+                                                    height: 32,
+                                                    borderRadius: '50%',
+                                                    background: COLORS[i % COLORS.length],
+                                                    color: 'white',
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    justifyContent: 'center',
+                                                    fontWeight: 700
+                                                }}>
+                                                    {i + 1}
+                                                </div>
+                                                <div style={{ flex: 1 }}>
+                                                    <div style={{ fontWeight: 600, marginBottom: 4 }}>{c.name}</div>
+                                                    <div style={{ display: 'flex', gap: 16, fontSize: 12, color: 'var(--muted)' }}>
+                                                        <span>Spend: {formatCurrency(c.spend * 100)}</span>
+                                                        <span>Purchases: {c.purchases}</span>
+                                                        <span>ROAS: {c.roas.toFixed(2)}x</span>
+                                                    </div>
+                                                </div>
+                                                <div style={{ textAlign: 'right' }}>
+                                                    <div style={{ fontSize: 20, fontWeight: 700, color: '#6366f1' }}>{c.efficiencyScore}</div>
+                                                    <div style={{ fontSize: 11, color: 'var(--muted)' }}>Efficiency Score</div>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </SectionCard>
+                            )}
+                        </>
+                    ) : (
+                        <div style={{ textAlign: 'center', padding: 40 }}>
+                            <p className="text-muted">No intelligence data available for this account.</p>
+                        </div>
+                    )}
                 </div>
             )}
 

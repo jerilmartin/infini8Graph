@@ -14,5 +14,6 @@ router.get('/hashtags', analyticsController.getHashtags);
 router.get('/reels', analyticsController.getReels);
 router.get('/posts', analyticsController.getPosts);
 router.get('/export', analyticsController.exportData);
+router.get('/content-intelligence', analyticsController.getContentIntelligence);
 
 export default router;

@@ -25,6 +25,12 @@ router.get('/accounts/:adAccountId/adsets', adsController.getAdSets);
 // Individual Ads
 router.get('/accounts/:adAccountId/ads', adsController.getAds);
 
+// Conversion Funnel Analytics
+router.get('/accounts/:adAccountId/funnel', adsController.getConversionFunnel);
+
+// Campaign Intelligence (deep analytics)
+router.get('/accounts/:adAccountId/intelligence', adsController.getCampaignIntelligence);
+
 // Page insights
 router.get('/page-insights', adsController.getPageInsights);
 

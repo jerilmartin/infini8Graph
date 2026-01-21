@@ -148,17 +148,20 @@ export async function getInstagramBusinessAccount(accessToken) {
  */
 export async function createOrUpdateUser(instagramData, accessToken, expiresIn) {
     try {
-        // Check if user exists
-        const { data: existingUser, error: findError } = await supabase
+        // 1. Create or Update User (Unified Identity)
+        // Check if user exists by instagram_user_id (legacy) or we might want to group by something else later
+        let { data: existingUser, error: findError } = await supabase
             .from('users')
             .select('id')
             .eq('instagram_user_id', instagramData.instagramUserId)
             .single();
 
+        // If not found by instagram_id, creates a new user. 
+        // Ideally we would check by email or facebook_id if available to link accounts.
+
         let userId;
 
         if (existingUser) {
-            // Update existing user
             userId = existingUser.id;
             await supabase
                 .from('users')
@@ -168,7 +171,6 @@ export async function createOrUpdateUser(instagramData, accessToken, expiresIn) 
                 })
                 .eq('id', userId);
         } else {
-            // Create new user
             const { data: newUser, error: createError } = await supabase
                 .from('users')
                 .insert({
@@ -182,32 +184,99 @@ export async function createOrUpdateUser(instagramData, accessToken, expiresIn) 
             userId = newUser.id;
         }
 
-        // Calculate token expiration
+        // 2. Create or Update Instagram Account
+        // Deactivate other accounts for this user (single active session per user for now, or just mark this as active)
+        await supabase
+            .from('instagram_accounts')
+            .update({ is_active: false })
+            .eq('user_id', userId);
+
+        let instagramAccountId;
+
+        const { data: existingAccount, error: accountError } = await supabase
+            .from('instagram_accounts')
+            .select('id')
+            .eq('instagram_user_id', instagramData.instagramUserId)
+            .single();
+
+        if (existingAccount) {
+            instagramAccountId = existingAccount.id;
+            await supabase
+                .from('instagram_accounts')
+                .update({
+                    user_id: userId, // Ensure link
+                    username: instagramData.username,
+                    name: instagramData.name,
+                    profile_picture_url: instagramData.profilePictureUrl,
+                    followers_count: instagramData.followersCount,
+                    follows_count: instagramData.followsCount,
+                    media_count: instagramData.mediaCount,
+                    biography: instagramData.biography,
+                    website: instagramData.website,
+                    is_active: true,
+                    updated_at: new Date().toISOString()
+                })
+                .eq('id', instagramAccountId);
+        } else {
+            const { data: newAccount, error: createAccountError } = await supabase
+                .from('instagram_accounts')
+                .insert({
+                    user_id: userId,
+                    instagram_user_id: instagramData.instagramUserId,
+                    username: instagramData.username,
+                    name: instagramData.name,
+                    profile_picture_url: instagramData.profilePictureUrl,
+                    followers_count: instagramData.followersCount,
+                    follows_count: instagramData.followsCount,
+                    media_count: instagramData.mediaCount,
+                    biography: instagramData.biography,
+                    website: instagramData.website,
+                    is_active: true
+                })
+                .select('id')
+                .single();
+
+            if (createAccountError) throw createAccountError;
+            instagramAccountId = newAccount.id;
+        }
+
+        // 3. Store Auth Token
         const expiresAt = new Date();
         expiresAt.setSeconds(expiresAt.getSeconds() + expiresIn);
-
-        // Encrypt and store/update token
         const encryptedToken = encrypt(accessToken);
 
+        // Delete existing token for this specific account
+        // Note: The unique constraint is on instagram_account_id now
         await supabase
             .from('auth_tokens')
-            .upsert({
+            .delete()
+            .eq('instagram_account_id', instagramAccountId);
+
+        const { error: insertError } = await supabase
+            .from('auth_tokens')
+            .insert({
                 user_id: userId,
+                instagram_account_id: instagramAccountId,
                 access_token: encryptedToken,
                 expires_at: expiresAt.toISOString()
-            }, {
-                onConflict: 'user_id'
             });
 
-        // Generate JWT for the user
+        if (insertError) {
+            console.error('Error saving auth token:', insertError);
+            throw new Error('Failed to save authentication token: ' + insertError.message);
+        }
+
+        // 4. Generate JWT
         const jwtToken = generateToken({
             userId: userId,
             instagramUserId: instagramData.instagramUserId,
+            instagramAccountId: instagramAccountId,
             username: instagramData.username
         });
 
         return {
             userId,
+            instagramAccountId,
             jwt: jwtToken,
             user: instagramData
         };
@@ -224,13 +293,47 @@ export async function createOrUpdateUser(instagramData, accessToken, expiresIn) 
  */
 export async function getAccessToken(userId) {
     try {
-        const { data, error } = await supabase
-            .from('auth_tokens')
-            .select('access_token, expires_at')
+        // First try to find the active instagram account
+        const { data: activeAccount } = await supabase
+            .from('instagram_accounts')
+            .select('id')
             .eq('user_id', userId)
+            .eq('is_active', true)
             .single();
 
-        if (error || !data) {
+        let query = supabase
+            .from('auth_tokens')
+            .select('access_token, expires_at');
+
+        if (activeAccount) {
+            query = query.eq('instagram_account_id', activeAccount.id);
+        } else {
+            // Fallback: get any token for this user (legacy support or if no account is marked active)
+            query = query.eq('user_id', userId);
+        }
+
+        const { data, error } = await query.maybeSingle(); // maybeSingle allows 0 rows without error
+
+        if (error) {
+            console.error('Supabase error fetching token:', error);
+            return null;
+        }
+
+        if (!data) {
+            console.error('No token data found for user:', userId);
+            // Emergency fallback: If we couldn't find a token by active account, try finding ANY token by user_id
+            // This handles cases where data might be slightly inconsistent during migration
+            if (activeAccount) {
+                const { data: fallbackData } = await supabase
+                    .from('auth_tokens')
+                    .select('access_token, expires_at')
+                    .eq('user_id', userId)
+                    .maybeSingle();
+
+                if (fallbackData) {
+                    return decrypt(fallbackData.access_token);
+                }
+            }
             return null;
         }
 
