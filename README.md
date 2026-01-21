@@ -1,8 +1,10 @@
-# 🚀 infini8Graph - Instagram Analytics Platform
+# infini8Graph
 
 A production-grade Instagram Analytics Web Platform with a Next.js frontend and Node.js/Express backend, backed by Supabase PostgreSQL.
 
-## 📁 Project Structure
+---
+
+## Project Structure
 
 ```
 infini8Graph/
@@ -29,6 +31,7 @@ infini8Graph/
     │   │       ├── reels/
     │   │       ├── best-time/
     │   │       ├── hashtags/
+    │   │       ├── ads/
     │   │       ├── export/
     │   │       └── settings/
     │   ├── components/      # React components
@@ -37,9 +40,12 @@ infini8Graph/
     └── package.json
 ```
 
-## 🛠️ Setup Instructions
+---
+
+## Setup Instructions
 
 ### Prerequisites
+
 - Node.js 18+
 - Supabase account with the database schema applied
 - Meta Developer App with Instagram Basic Display & Graph API configured
@@ -52,12 +58,14 @@ npm install
 ```
 
 Configure `.env` with your credentials:
+
 - `SUPABASE_URL` and `SUPABASE_SERVICE_KEY`
 - `META_APP_ID` and `META_APP_SECRET`
 - `META_REDIRECT_URI` (your Cloudflare tunnel URL + `/api/auth/callback`)
 - `JWT_SECRET` and `ENCRYPTION_KEY`
 
 Start the server:
+
 ```bash
 npm run dev
 ```
@@ -70,11 +78,13 @@ npm install
 ```
 
 Configure `.env.local`:
+
 ```
 NEXT_PUBLIC_API_URL=https://your-cloudflare-tunnel-url
 ```
 
 Start the frontend:
+
 ```bash
 npm run dev
 ```
@@ -82,23 +92,31 @@ npm run dev
 ### 3. Cloudflare Tunnel (Development)
 
 Run a Cloudflare tunnel to get a public HTTPS URL:
+
 ```bash
 cloudflared tunnel --url http://localhost:3001
 ```
 
 Update `META_REDIRECT_URI` in Meta Developer Console and backend `.env` with the tunnel URL.
 
-## 📊 Features
+---
 
-- **Dashboard**: Overview of followers, engagement rate, recent posts
-- **Growth**: Trend analysis, week-over-week comparisons
-- **Engagement**: Detailed post-by-post metrics
-- **Reels**: Video content performance vs regular posts
-- **Best Time**: Optimal posting schedule based on historical data
-- **Hashtags**: Top performing and most used hashtags
-- **Export**: Download analytics as JSON or CSV
+## Features
 
-## 🔐 Security
+| Feature       | Description                                          |
+|---------------|------------------------------------------------------|
+| Dashboard     | Overview of followers, engagement rate, recent posts |
+| Growth        | Trend analysis, week-over-week comparisons           |
+| Engagement    | Detailed post-by-post metrics                        |
+| Reels         | Video content performance vs regular posts           |
+| Best Time     | Optimal posting schedule based on historical data    |
+| Hashtags      | Top performing and most used hashtags                |
+| Ads           | Facebook/Instagram Ads performance analytics         |
+| Export        | Download analytics as JSON or CSV                    |
+
+---
+
+## Security
 
 - JWT authentication with HttpOnly cookies
 - AES-256 encrypted Instagram access tokens
@@ -106,45 +124,80 @@ Update `META_REDIRECT_URI` in Meta Developer Console and backend `.env` with the
 - CORS protection
 - Helmet.js security headers
 
-## 🗄️ Database Schema
+---
+
+## Database Schema
 
 Apply the SQL schema to your Supabase project:
-- `users` - Instagram user accounts
-- `auth_tokens` - Encrypted access tokens
-- `analytics_cache` - Cached analytics with TTL
 
-## 📱 API Endpoints
-
-### Auth
-- `GET /api/auth/login` - Get OAuth URL
-- `GET /api/auth/callback` - OAuth callback
-- `GET /api/auth/me` - Get current user
-- `POST /api/auth/logout` - Logout
-
-### Analytics
-- `GET /api/instagram/overview` - Dashboard metrics
-- `GET /api/instagram/growth` - Growth analytics
-- `GET /api/instagram/posts` - Posts with engagement
-- `GET /api/instagram/reels` - Reels analytics
-- `GET /api/instagram/best-time` - Best time to post
-- `GET /api/instagram/hashtags` - Hashtag analysis
-- `GET /api/instagram/export` - Export data
-
-## 🎨 Tech Stack
-
-### Frontend
-- Next.js 15 (App Router)
-- React Query
-- Recharts
-- Tailwind CSS
-- Lucide Icons
-
-### Backend
-- Node.js + Express
-- JWT Authentication
-- Supabase (PostgreSQL)
-- Axios for Instagram API
+| Table            | Description                      |
+|------------------|----------------------------------|
+| `users`          | Instagram user accounts          |
+| `auth_tokens`    | Encrypted access tokens          |
+| `analytics_cache`| Cached analytics with TTL        |
 
 ---
 
+## API Endpoints
 
+### Auth
+
+| Method | Endpoint               | Description          |
+|--------|------------------------|----------------------|
+| GET    | `/api/auth/login`      | Get OAuth URL        |
+| GET    | `/api/auth/callback`   | OAuth callback       |
+| GET    | `/api/auth/me`         | Get current user     |
+| POST   | `/api/auth/logout`     | Logout               |
+
+### Analytics
+
+| Method | Endpoint                     | Description          |
+|--------|------------------------------|----------------------|
+| GET    | `/api/instagram/overview`    | Dashboard metrics    |
+| GET    | `/api/instagram/growth`      | Growth analytics     |
+| GET    | `/api/instagram/posts`       | Posts with engagement|
+| GET    | `/api/instagram/reels`       | Reels analytics      |
+| GET    | `/api/instagram/best-time`   | Best time to post    |
+| GET    | `/api/instagram/hashtags`    | Hashtag analysis     |
+| GET    | `/api/instagram/export`      | Export data          |
+
+### Ads
+
+| Method | Endpoint                                   | Description                  |
+|--------|--------------------------------------------|------------------------------|
+| GET    | `/api/ads/accounts`                        | Get ad accounts              |
+| GET    | `/api/ads/accounts/:id/insights`           | Get account insights         |
+| GET    | `/api/ads/accounts/:id/campaigns`          | Get campaigns                |
+| GET    | `/api/ads/accounts/:id/adsets`             | Get ad sets                  |
+| GET    | `/api/ads/accounts/:id/ads`                | Get individual ads           |
+| GET    | `/api/ads/page-insights`                   | Get page insights            |
+
+---
+
+## Tech Stack
+
+### Frontend
+
+| Technology     | Purpose                    |
+|----------------|----------------------------|
+| Next.js 15     | React framework (App Router)|
+| React Query    | Data fetching and caching  |
+| Recharts       | Charts and visualizations  |
+| Tailwind CSS   | Styling                    |
+| Lucide Icons   | Icon library               |
+
+### Backend
+
+| Technology     | Purpose                    |
+|----------------|----------------------------|
+| Node.js        | Runtime environment        |
+| Express        | Web framework              |
+| JWT            | Authentication             |
+| Supabase       | PostgreSQL database        |
+| Axios          | HTTP client for APIs       |
+
+---
+
+## License
+
+MIT
