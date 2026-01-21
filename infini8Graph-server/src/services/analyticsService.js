@@ -98,9 +98,12 @@ class AnalyticsService {
         const cached = await this.checkCache('overview');
         if (cached) return cached;
 
-        // Fetch fresh data
-        const profile = await this.instagram.getProfile();
-        const media = await this.instagram.getAllMediaWithInsights(30);
+        // Fetch fresh data including demographics
+        const [profile, media, demographics] = await Promise.all([
+            this.instagram.getProfile(),
+            this.instagram.getAllMediaWithInsights(30),
+            this.instagram.getFollowerDemographics()
+        ]);
 
         // Calculate engagement rate
         const totalEngagement = media.reduce((sum, post) => sum + post.engagement, 0);
@@ -146,6 +149,7 @@ class AnalyticsService {
                 totalReach,
                 totalSaved
             },
+            demographics: demographics || {},
             recentPosts,
             lastUpdated: new Date().toISOString()
         };

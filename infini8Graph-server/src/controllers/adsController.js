@@ -79,13 +79,28 @@ export async function getAdInsights(req, res) {
 
         const accountId = adAccountId.startsWith('act_') ? adAccountId : `act_${adAccountId}`;
 
-        // Get comprehensive insights
-        const [summaryRes, dailyRes, demographicsRes, placementsRes] = await Promise.allSettled([
-            // Summary metrics
+        // First, get ads with their relevance diagnostics (these are only available at ad level)
+        let adRelevanceData = [];
+        try {
+            const adsResponse = await axios.get(`${GRAPH_API_BASE}/${accountId}/ads`, {
+                params: {
+                    access_token: accessToken,
+                    fields: 'name,status,insights.date_preset(' + datePreset + '){quality_ranking,engagement_rate_ranking,conversion_rate_ranking,impressions,spend}',
+                    limit: 50
+                }
+            });
+            adRelevanceData = adsResponse.data.data || [];
+        } catch (err) {
+            console.log('Could not fetch ad-level relevance data:', err.response?.data?.error?.message || err.message);
+        }
+
+        // Get comprehensive insights with all new metrics
+        const [summaryRes, dailyRes, demographicsRes, placementsRes, deviceRes, positionRes, countryRes, regionRes] = await Promise.allSettled([
+            // Summary metrics with ROAS
             axios.get(`${GRAPH_API_BASE}/${accountId}/insights`, {
                 params: {
                     access_token: accessToken,
-                    fields: 'spend,impressions,reach,clicks,cpc,cpm,ctr,frequency,actions,video_p25_watched_actions,video_p50_watched_actions,video_p75_watched_actions,video_p100_watched_actions',
+                    fields: 'spend,impressions,reach,clicks,cpc,cpm,ctr,frequency,actions,action_values,cost_per_action_type,purchase_roas,website_purchase_roas,video_p25_watched_actions,video_p50_watched_actions,video_p75_watched_actions,video_p100_watched_actions,outbound_clicks,unique_outbound_clicks,inline_link_clicks,cost_per_inline_link_click,social_spend',
                     date_preset: datePreset
                 }
             }),
@@ -93,7 +108,7 @@ export async function getAdInsights(req, res) {
             axios.get(`${GRAPH_API_BASE}/${accountId}/insights`, {
                 params: {
                     access_token: accessToken,
-                    fields: 'spend,impressions,clicks,reach',
+                    fields: 'spend,impressions,clicks,reach,ctr',
                     date_preset: datePreset,
                     time_increment: 1
                 }
@@ -102,7 +117,7 @@ export async function getAdInsights(req, res) {
             axios.get(`${GRAPH_API_BASE}/${accountId}/insights`, {
                 params: {
                     access_token: accessToken,
-                    fields: 'spend,impressions,clicks,reach',
+                    fields: 'spend,impressions,clicks,reach,ctr',
                     date_preset: datePreset,
                     breakdowns: 'age,gender'
                 }
@@ -115,6 +130,42 @@ export async function getAdInsights(req, res) {
                     date_preset: datePreset,
                     breakdowns: 'publisher_platform'
                 }
+            }),
+            // Device platform breakdown (Mobile vs Desktop)
+            axios.get(`${GRAPH_API_BASE}/${accountId}/insights`, {
+                params: {
+                    access_token: accessToken,
+                    fields: 'spend,impressions,clicks,reach',
+                    date_preset: datePreset,
+                    breakdowns: 'device_platform'
+                }
+            }),
+            // Platform position breakdown (Feed, Stories, Reels, etc.)
+            axios.get(`${GRAPH_API_BASE}/${accountId}/insights`, {
+                params: {
+                    access_token: accessToken,
+                    fields: 'spend,impressions,clicks,reach',
+                    date_preset: datePreset,
+                    breakdowns: 'platform_position'
+                }
+            }),
+            // Country breakdown
+            axios.get(`${GRAPH_API_BASE}/${accountId}/insights`, {
+                params: {
+                    access_token: accessToken,
+                    fields: 'spend,impressions,clicks,reach,ctr',
+                    date_preset: datePreset,
+                    breakdowns: 'country'
+                }
+            }),
+            // Region breakdown
+            axios.get(`${GRAPH_API_BASE}/${accountId}/insights`, {
+                params: {
+                    access_token: accessToken,
+                    fields: 'spend,impressions,clicks,reach',
+                    date_preset: datePreset,
+                    breakdowns: 'region'
+                }
             })
         ]);
 
@@ -123,6 +174,10 @@ export async function getAdInsights(req, res) {
         const daily = dailyRes.status === 'fulfilled' ? dailyRes.value.data.data : [];
         const demographics = demographicsRes.status === 'fulfilled' ? demographicsRes.value.data.data : [];
         const placements = placementsRes.status === 'fulfilled' ? placementsRes.value.data.data : [];
+        const devices = deviceRes.status === 'fulfilled' ? deviceRes.value.data.data : [];
+        const positions = positionRes.status === 'fulfilled' ? positionRes.value.data.data : [];
+        const countries = countryRes.status === 'fulfilled' ? countryRes.value.data.data : [];
+        const regions = regionRes.status === 'fulfilled' ? regionRes.value.data.data : [];
 
         // Extract video views from actions
         let videoViews = { views_3s: 0, views_25: 0, views_50: 0, views_75: 0, views_100: 0 };
@@ -150,6 +205,75 @@ export async function getAdInsights(req, res) {
             }));
         }
 
+        // Extract action values (monetary)
+        let actionValues = [];
+        if (summary?.action_values) {
+            actionValues = summary.action_values.map(a => ({
+                type: a.action_type,
+                value: parseFloat(a.value)
+            }));
+        }
+
+        // Extract cost per action type
+        let costPerAction = [];
+        if (summary?.cost_per_action_type) {
+            costPerAction = summary.cost_per_action_type.map(a => ({
+                type: a.action_type,
+                value: parseFloat(a.value)
+            }));
+        }
+
+        // Ad Relevance Diagnostics - aggregate from individual ads
+        // Rankings are only available at ad level, not account level
+        let qualityRankings = [];
+        let engagementRankings = [];
+        let conversionRankings = [];
+
+        for (const ad of adRelevanceData) {
+            const insights = ad.insights?.data?.[0];
+            if (insights) {
+                if (insights.quality_ranking && insights.quality_ranking !== 'UNKNOWN') {
+                    qualityRankings.push(insights.quality_ranking);
+                }
+                if (insights.engagement_rate_ranking && insights.engagement_rate_ranking !== 'UNKNOWN') {
+                    engagementRankings.push(insights.engagement_rate_ranking);
+                }
+                if (insights.conversion_rate_ranking && insights.conversion_rate_ranking !== 'UNKNOWN') {
+                    conversionRankings.push(insights.conversion_rate_ranking);
+                }
+            }
+        }
+
+        // Helper function to get most common ranking
+        const getMostCommon = (arr) => {
+            if (arr.length === 0) return 'UNKNOWN';
+            const counts = arr.reduce((acc, val) => { acc[val] = (acc[val] || 0) + 1; return acc; }, {});
+            return Object.entries(counts).sort((a, b) => b[1] - a[1])[0][0];
+        };
+
+        const relevanceDiagnostics = {
+            qualityRanking: getMostCommon(qualityRankings),
+            engagementRateRanking: getMostCommon(engagementRankings),
+            conversionRateRanking: getMostCommon(conversionRankings),
+            adsAnalyzed: adRelevanceData.length,
+            adsWithData: qualityRankings.length
+        };
+
+        // ROAS metrics
+        const roas = {
+            purchaseRoas: summary?.purchase_roas?.[0]?.value || 0,
+            websitePurchaseRoas: summary?.website_purchase_roas?.[0]?.value || 0
+        };
+
+        // Advanced click metrics
+        const clickMetrics = {
+            outboundClicks: summary?.outbound_clicks?.[0]?.value || 0,
+            uniqueOutboundClicks: summary?.unique_outbound_clicks?.[0]?.value || 0,
+            inlineLinkClicks: summary?.inline_link_clicks || 0,
+            costPerInlineLinkClick: summary?.cost_per_inline_link_click || 0,
+            socialSpend: summary?.social_spend || 0
+        };
+
         res.json({
             success: true,
             data: {
@@ -163,11 +287,20 @@ export async function getAdInsights(req, res) {
                     ctr: summary?.ctr || '0',
                     frequency: summary?.frequency || '0'
                 },
+                relevanceDiagnostics,
+                roas,
+                clickMetrics,
+                actionValues,
+                costPerAction,
                 videoViews,
                 conversions,
                 daily,
                 demographics,
-                placements
+                placements,
+                devices,
+                positions,
+                countries,
+                regions
             }
         });
     } catch (error) {

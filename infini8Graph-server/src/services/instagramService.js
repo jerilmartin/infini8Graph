@@ -65,25 +65,68 @@ class InstagramService {
     }
 
     /**
-     * Get follower demographics
+     * Get follower demographics (comprehensive)
      */
     async getFollowerDemographics() {
-        const metrics = [
-            'follower_demographics'
-        ];
+        const results = {
+            cities: [],
+            countries: [],
+            genderAge: [],
+            locales: [],
+            onlineFollowers: []
+        };
 
         try {
-            return await this.apiRequest(`/${this.instagramUserId}/insights`, {
-                metric: metrics.join(','),
+            // Get audience city breakdown
+            const cityRes = await this.apiRequest(`/${this.instagramUserId}/insights`, {
+                metric: 'follower_demographics',
                 period: 'lifetime',
                 metric_type: 'total_value',
-                breakdown: 'city,country,age,gender'
+                breakdown: 'city'
             });
-        } catch (error) {
-            // Demographics may not be available for all accounts
-            console.warn('Demographics not available:', error.message);
-            return null;
-        }
+            if (cityRes?.data?.[0]?.total_value?.breakdowns?.[0]?.results) {
+                results.cities = cityRes.data[0].total_value.breakdowns[0].results.slice(0, 10);
+            }
+        } catch (e) { console.warn('City demographics not available'); }
+
+        try {
+            // Get audience country breakdown
+            const countryRes = await this.apiRequest(`/${this.instagramUserId}/insights`, {
+                metric: 'follower_demographics',
+                period: 'lifetime',
+                metric_type: 'total_value',
+                breakdown: 'country'
+            });
+            if (countryRes?.data?.[0]?.total_value?.breakdowns?.[0]?.results) {
+                results.countries = countryRes.data[0].total_value.breakdowns[0].results.slice(0, 10);
+            }
+        } catch (e) { console.warn('Country demographics not available'); }
+
+        try {
+            // Get audience gender/age breakdown
+            const genderAgeRes = await this.apiRequest(`/${this.instagramUserId}/insights`, {
+                metric: 'follower_demographics',
+                period: 'lifetime',
+                metric_type: 'total_value',
+                breakdown: 'age,gender'
+            });
+            if (genderAgeRes?.data?.[0]?.total_value?.breakdowns?.[0]?.results) {
+                results.genderAge = genderAgeRes.data[0].total_value.breakdowns[0].results;
+            }
+        } catch (e) { console.warn('Gender/age demographics not available'); }
+
+        try {
+            // Get online followers (when followers are active)
+            const onlineRes = await this.apiRequest(`/${this.instagramUserId}/insights`, {
+                metric: 'online_followers',
+                period: 'lifetime'
+            });
+            if (onlineRes?.data?.[0]?.values) {
+                results.onlineFollowers = onlineRes.data[0].values;
+            }
+        } catch (e) { console.warn('Online followers data not available'); }
+
+        return results;
     }
 
     /**
