@@ -31,7 +31,14 @@ router.get('/accounts/:adAccountId/funnel', adsController.getConversionFunnel);
 // Campaign Intelligence (deep analytics)
 router.get('/accounts/:adAccountId/intelligence', adsController.getCampaignIntelligence);
 
+// Advanced Analytics (Fatigue, LQS, Creative Forensics, Learning Phase)
+router.get('/accounts/:adAccountId/advanced', adsController.getAdvancedAnalytics);
+
+// Deep Insights (Per-campaign funnels, Bounce Gap, Video Hook Analysis, Placement Arbitrage)
+router.get('/accounts/:adAccountId/deep-insights', adsController.getDeepInsights);
+
 // Page insights
 router.get('/page-insights', adsController.getPageInsights);
 
 export default router;
+

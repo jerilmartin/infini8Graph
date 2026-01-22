@@ -7,7 +7,7 @@ import {
     Megaphone, IndianRupee, Eye, MousePointer, Users, BarChart3,
     Play, Target, Layers, TrendingUp, HelpCircle, Smartphone, Monitor,
     Globe, MapPin, Award, Zap, DollarSign, ExternalLink, ChevronDown, ChevronUp,
-    Filter, Calendar, Clock, ArrowRight, ShoppingCart, CreditCard, Package, Brain
+    Filter, Calendar, Clock, ArrowRight, ShoppingCart, CreditCard, Package, Brain, Activity
 } from 'lucide-react';
 import {
     AreaChart, Area, BarChart, Bar, PieChart as RechartsPie, Pie, Cell,
@@ -194,7 +194,7 @@ function TabButton({ active, onClick, children }: { active: boolean; onClick: ()
 
 export default function AdsPage() {
     const [selectedAccount, setSelectedAccount] = useState<string | null>(null);
-    const [activeTab, setActiveTab] = useState<'overview' | 'funnel' | 'intelligence' | 'campaigns' | 'demographics' | 'placements' | 'geo'>('overview');
+    const [activeTab, setActiveTab] = useState<'overview' | 'funnel' | 'intelligence' | 'advanced' | 'deep' | 'campaigns' | 'demographics' | 'placements' | 'geo'>('overview');
 
     // Fetch accounts
     const { data: accountsData, isLoading: accountsLoading } = useQuery({
@@ -250,6 +250,28 @@ export default function AdsPage() {
             return res.data;
         },
         enabled: !!effectiveAccount && activeTab === 'intelligence'
+    });
+
+    // Fetch advanced analytics
+    const { data: advancedData, isLoading: advancedLoading } = useQuery({
+        queryKey: ['advanced', effectiveAccount],
+        queryFn: async () => {
+            if (!effectiveAccount) return null;
+            const res = await adsApi.getAdvancedAnalytics(effectiveAccount);
+            return res.data;
+        },
+        enabled: !!effectiveAccount && activeTab === 'advanced'
+    });
+
+    // Fetch deep insights (Nurture Funnel, Bounce Gap, Video Hook, Placement Arbitrage)
+    const { data: deepInsightsData, isLoading: deepInsightsLoading } = useQuery({
+        queryKey: ['deep-insights', effectiveAccount],
+        queryFn: async () => {
+            if (!effectiveAccount) return null;
+            const res = await adsApi.getDeepInsights(effectiveAccount);
+            return res.data;
+        },
+        enabled: !!effectiveAccount && activeTab === 'deep'
     });
 
     if (accountsLoading) {
@@ -384,6 +406,12 @@ export default function AdsPage() {
                 </TabButton>
                 <TabButton active={activeTab === 'intelligence'} onClick={() => setActiveTab('intelligence')}>
                     <Brain size={14} /> Intelligence
+                </TabButton>
+                <TabButton active={activeTab === 'advanced'} onClick={() => setActiveTab('advanced')}>
+                    <Zap size={14} /> Advanced
+                </TabButton>
+                <TabButton active={activeTab === 'deep'} onClick={() => setActiveTab('deep')}>
+                    <Activity size={14} /> Deep
                 </TabButton>
                 <TabButton active={activeTab === 'campaigns'} onClick={() => setActiveTab('campaigns')}>
                     <Target size={14} /> Campaigns
@@ -586,8 +614,11 @@ export default function AdsPage() {
 
                     {/* Device Performance */}
                     {deviceChartData.length > 0 && (
-                        <SectionCard title="Device Performance" subtitle="How your ads perform on different devices">
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
+                        <SectionCard
+                            title="Device Performance"
+                            subtitle="How your ads perform on different devices"
+                        >
+                            <div style={{ display: 'grid', gridTemplateColumns: '250px 1fr', gap: 32, alignItems: 'center' }}>
                                 <ResponsiveContainer width="100%" height={200}>
                                     <RechartsPie>
                                         <Pie
@@ -596,8 +627,10 @@ export default function AdsPage() {
                                             nameKey="name"
                                             cx="50%"
                                             cy="50%"
-                                            outerRadius={70}
-                                            label={({ percent }) => `${((percent || 0) * 100).toFixed(0)}%`}
+                                            innerRadius={40}
+                                            outerRadius={80}
+                                            paddingAngle={2}
+                                            labelLine={false}
                                         >
                                             {deviceChartData.map((_: any, i: number) => (
                                                 <Cell key={i} fill={COLORS[i % COLORS.length]} />
@@ -606,19 +639,49 @@ export default function AdsPage() {
                                         <RechartsTooltip formatter={(value: any) => `₹${value.toLocaleString()}`} />
                                     </RechartsPie>
                                 </ResponsiveContainer>
-                                <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 12 }}>
-                                    {devices.map((d: any, i: number) => (
-                                        <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                                {d.device_platform === 'mobile_app' ? <Smartphone size={18} /> : <Monitor size={18} />}
-                                                <span style={{ textTransform: 'capitalize' }}>{d.device_platform?.replace(/_/g, ' ')}</span>
+                                <div style={{ display: 'grid', gap: 12 }}>
+                                    {devices.map((d: any, i: number) => {
+                                        const spendNum = parseFloat(d.spend) || 0;
+                                        const totalSpend = devices.reduce((sum: number, dev: any) => sum + (parseFloat(dev.spend) || 0), 0);
+                                        const percentage = totalSpend > 0 ? ((spendNum / totalSpend) * 100).toFixed(1) : '0';
+
+                                        return (
+                                            <div key={i} style={{
+                                                display: 'flex',
+                                                justifyContent: 'space-between',
+                                                alignItems: 'center',
+                                                padding: '12px 16px',
+                                                background: 'var(--background)',
+                                                borderRadius: 8,
+                                                borderLeft: `4px solid ${COLORS[i % COLORS.length]}`
+                                            }}>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                                                    {d.device_platform === 'mobile_app' || d.device_platform === 'mobile_web' ?
+                                                        <Smartphone size={20} style={{ color: COLORS[i % COLORS.length] }} /> :
+                                                        <Monitor size={20} style={{ color: COLORS[i % COLORS.length] }} />
+                                                    }
+                                                    <div>
+                                                        <div style={{ fontWeight: 600, textTransform: 'capitalize' }}>
+                                                            {d.device_platform?.replace(/_/g, ' ')}
+                                                        </div>
+                                                        <div className="text-muted" style={{ fontSize: 11 }}>
+                                                            {formatNumber(d.impressions)} impressions
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <div style={{ textAlign: 'right' }}>
+                                                    <div style={{ fontWeight: 700, fontSize: 16 }}>{formatCurrency(d.spend)}</div>
+                                                    <div style={{
+                                                        fontSize: 12,
+                                                        color: COLORS[i % COLORS.length],
+                                                        fontWeight: 600
+                                                    }}>
+                                                        {percentage}% of spend
+                                                    </div>
+                                                </div>
                                             </div>
-                                            <div style={{ textAlign: 'right' }}>
-                                                <div style={{ fontWeight: 600 }}>{formatCurrency(d.spend)}</div>
-                                                <div className="text-muted" style={{ fontSize: 11 }}>{formatNumber(d.impressions)} imp</div>
-                                            </div>
-                                        </div>
-                                    ))}
+                                        );
+                                    })}
                                 </div>
                             </div>
                         </SectionCard>
@@ -847,6 +910,9 @@ export default function AdsPage() {
                                         ))}
                                     </tbody>
                                 </table>
+                                <div style={{ marginTop: 12, padding: '10px 16px', background: 'rgba(99, 102, 241, 0.1)', borderRadius: 6, fontSize: 12, color: 'var(--muted)' }}>
+                                    Showing top 15 regions sorted by highest spend. Total {regions.length} regions tracked.
+                                </div>
                             </div>
                         ) : (
                             <p className="text-muted">No region data available</p>
@@ -868,29 +934,41 @@ export default function AdsPage() {
                             {/* Funnel Summary */}
                             <SectionCard
                                 title="Conversion Funnel Overview"
-                                subtitle="Track user journey from landing page to purchase"
+                                subtitle="Track user journey from ad click to purchase — data from Meta's standard events"
                             >
                                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 24 }}>
                                     <div style={{ padding: 16, background: 'var(--background)', borderRadius: 8, textAlign: 'center' }}>
-                                        <div className="text-muted" style={{ fontSize: 12, marginBottom: 4 }}>Total Spend</div>
+                                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4, marginBottom: 4 }}>
+                                            <span className="text-muted" style={{ fontSize: 12 }}>Total Spend</span>
+                                            <InfoTooltip text="Total amount spent during the last 90 days across all campaigns in this ad account." />
+                                        </div>
                                         <div style={{ fontSize: 24, fontWeight: 700, color: '#10b981' }}>
                                             {formatCurrency(funnelData.data.summary?.totalSpend * 100 || 0)}
                                         </div>
                                     </div>
                                     <div style={{ padding: 16, background: 'var(--background)', borderRadius: 8, textAlign: 'center' }}>
-                                        <div className="text-muted" style={{ fontSize: 12, marginBottom: 4 }}>Overall Conversion</div>
+                                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4, marginBottom: 4 }}>
+                                            <span className="text-muted" style={{ fontSize: 12 }}>Overall Conversion</span>
+                                            <InfoTooltip text="Purchases ÷ Landing Page Views. This is the percentage of users who saw your landing page and completed a purchase." />
+                                        </div>
                                         <div style={{ fontSize: 24, fontWeight: 700, color: '#6366f1' }}>
                                             {funnelData.data.summary?.overallConversionRate || 0}%
                                         </div>
                                     </div>
                                     <div style={{ padding: 16, background: 'var(--background)', borderRadius: 8, textAlign: 'center' }}>
-                                        <div className="text-muted" style={{ fontSize: 12, marginBottom: 4 }}>ROAS</div>
+                                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4, marginBottom: 4 }}>
+                                            <span className="text-muted" style={{ fontSize: 12 }}>ROAS</span>
+                                            <InfoTooltip text="Return On Ad Spend. Revenue ÷ Spend. A ROAS of 2x means you earned ₹2 for every ₹1 spent. Above 1x is profitable." />
+                                        </div>
                                         <div style={{ fontSize: 24, fontWeight: 700, color: funnelData.data.summary?.roas > 1 ? '#10b981' : '#f59e0b' }}>
                                             {funnelData.data.summary?.roas || 0}x
                                         </div>
                                     </div>
                                     <div style={{ padding: 16, background: 'var(--background)', borderRadius: 8, textAlign: 'center' }}>
-                                        <div className="text-muted" style={{ fontSize: 12, marginBottom: 4 }}>Cost/Purchase</div>
+                                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4, marginBottom: 4 }}>
+                                            <span className="text-muted" style={{ fontSize: 12 }}>Cost/Purchase</span>
+                                            <InfoTooltip text="Average cost to acquire one purchase. Total Spend ÷ Total Purchases. Lower is better." />
+                                        </div>
                                         <div style={{ fontSize: 24, fontWeight: 700, color: '#ec4899' }}>
                                             {formatCurrency(funnelData.data.summary?.costPerPurchase * 100 || 0)}
                                         </div>
@@ -979,15 +1057,22 @@ export default function AdsPage() {
                                         padding: '16px 20px',
                                         background: 'linear-gradient(135deg, rgba(239, 68, 68, 0.1), rgba(249, 115, 22, 0.1))',
                                         borderRadius: 8,
-                                        border: '1px solid rgba(239, 68, 68, 0.3)',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        gap: 12
+                                        border: '1px solid rgba(239, 68, 68, 0.3)'
                                     }}>
-                                        <Zap size={20} style={{ color: '#ef4444' }} />
-                                        <div>
-                                            <div style={{ fontWeight: 600, color: '#ef4444' }}>Bottleneck Detected</div>
-                                            <div style={{ fontSize: 13 }}>{funnelData.data.bottleneck.insight}</div>
+                                        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+                                            <Zap size={20} style={{ color: '#ef4444', flexShrink: 0, marginTop: 2 }} />
+                                            <div>
+                                                <div style={{ fontWeight: 600, color: '#ef4444', marginBottom: 4 }}>
+                                                    🚨 Bottleneck Detected: {funnelData.data.bottleneck.stage}
+                                                </div>
+                                                <div style={{ fontSize: 13, marginBottom: 8 }}>{funnelData.data.bottleneck.insight}</div>
+                                                <div style={{ fontSize: 12, color: 'var(--muted)', padding: '8px 12px', background: 'rgba(0,0,0,0.05)', borderRadius: 6 }}>
+                                                    <strong>What this means:</strong> The drop-off at this stage is higher than expected. This is where you lose the most potential customers.
+                                                    Consider optimizing your {funnelData.data.bottleneck.stage === 'Add To Cart' ? 'product page, pricing, or shipping info' :
+                                                        funnelData.data.bottleneck.stage === 'Initiate Checkout' ? 'checkout flow and trust signals' :
+                                                            funnelData.data.bottleneck.stage === 'Add Payment Info' ? 'payment options and security messaging' : 'landing page experience'}.
+                                                </div>
+                                            </div>
                                         </div>
                                     </div>
                                 )}
@@ -1161,6 +1246,876 @@ export default function AdsPage() {
                     ) : (
                         <div style={{ textAlign: 'center', padding: 40 }}>
                             <p className="text-muted">No intelligence data available for this account.</p>
+                        </div>
+                    )}
+                </div>
+            )}
+
+            {/* ==================== ADVANCED TAB ==================== */}
+            {activeTab === 'advanced' && (
+                <div style={{ display: 'grid', gap: 20 }}>
+                    {advancedLoading ? (
+                        <div style={{ textAlign: 'center', padding: 40 }}>
+                            <div className="spinner" style={{ margin: '0 auto 16px' }}></div>
+                            <p className="text-muted">Running advanced analysis...</p>
+                        </div>
+                    ) : advancedData?.data ? (
+                        <>
+                            {/* Fatigue Early Warning */}
+                            <SectionCard
+                                title="🚨 Fatigue Early Warning System"
+                                subtitle="Real-time monitoring of ad fatigue indicators"
+                            >
+                                <div style={{ display: 'grid', gridTemplateColumns: '200px 1fr', gap: 24 }}>
+                                    {/* Fatigue Score Circle */}
+                                    <div style={{ textAlign: 'center' }}>
+                                        <div style={{
+                                            width: 140,
+                                            height: 140,
+                                            borderRadius: '50%',
+                                            background: advancedData.data.fatigueAnalysis?.status === 'critical'
+                                                ? 'linear-gradient(135deg, #ef4444, #f87171)'
+                                                : advancedData.data.fatigueAnalysis?.status === 'warning'
+                                                    ? 'linear-gradient(135deg, #f59e0b, #fbbf24)'
+                                                    : 'linear-gradient(135deg, #10b981, #34d399)',
+                                            display: 'flex',
+                                            flexDirection: 'column',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            margin: '0 auto',
+                                            boxShadow: '0 8px 24px rgba(0,0,0,0.15)'
+                                        }}>
+                                            <div style={{ fontSize: 36, fontWeight: 700, color: 'white' }}>
+                                                {advancedData.data.fatigueAnalysis?.statusEmoji}
+                                            </div>
+                                            <div style={{ fontSize: 12, color: 'white', opacity: 0.9 }}>
+                                                Score: {advancedData.data.fatigueAnalysis?.score || 0}
+                                            </div>
+                                        </div>
+                                        <div style={{ marginTop: 12, fontWeight: 600 }}>
+                                            {advancedData.data.fatigueAnalysis?.statusLabel || 'Unknown'}
+                                        </div>
+                                    </div>
+
+                                    {/* Indicators */}
+                                    <div>
+                                        <div style={{ marginBottom: 16 }}>
+                                            <span className="text-muted" style={{ fontSize: 12 }}>Fatigue Indicators</span>
+                                        </div>
+                                        {(advancedData.data.fatigueAnalysis?.indicators || []).length > 0 ? (
+                                            <div style={{ display: 'grid', gap: 8 }}>
+                                                {(advancedData.data.fatigueAnalysis?.indicators || []).map((ind: any, i: number) => (
+                                                    <div key={i} style={{
+                                                        padding: '12px 16px',
+                                                        background: ind.severity === 'high' ? 'rgba(239, 68, 68, 0.1)' : 'rgba(245, 158, 11, 0.1)',
+                                                        borderRadius: 8,
+                                                        borderLeft: `4px solid ${ind.severity === 'high' ? '#ef4444' : '#f59e0b'}`,
+                                                        display: 'flex',
+                                                        justifyContent: 'space-between',
+                                                        alignItems: 'center'
+                                                    }}>
+                                                        <span style={{ fontSize: 13 }}>{ind.message}</span>
+                                                        <span style={{
+                                                            padding: '4px 10px',
+                                                            borderRadius: 20,
+                                                            background: ind.severity === 'high' ? '#ef4444' : '#f59e0b',
+                                                            color: 'white',
+                                                            fontSize: 11,
+                                                            fontWeight: 600
+                                                        }}>
+                                                            {ind.severity === 'high' ? 'HIGH' : 'MEDIUM'}
+                                                        </span>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        ) : (
+                                            <div style={{ padding: 20, background: 'rgba(16, 185, 129, 0.1)', borderRadius: 8, textAlign: 'center' }}>
+                                                <span style={{ color: '#10b981' }}>✓ No fatigue indicators detected</span>
+                                            </div>
+                                        )}
+
+                                        {advancedData.data.fatigueAnalysis?.recommendation && (
+                                            <div style={{
+                                                marginTop: 16,
+                                                padding: '12px 16px',
+                                                background: 'var(--background)',
+                                                borderRadius: 8,
+                                                fontSize: 13
+                                            }}>
+                                                <strong>Recommendation:</strong> {advancedData.data.fatigueAnalysis.recommendation}
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            </SectionCard>
+
+                            {/* Lead Quality Score */}
+                            {advancedData.data.leadQualityScore && (
+                                <SectionCard title="📊 Lead Quality Score (LQS)" subtitle="Campaign quality ranking based on CTR, conversion rate, and engagement depth">
+                                    <div style={{ display: 'grid', gridTemplateColumns: '180px 1fr', gap: 24 }}>
+                                        <div style={{ textAlign: 'center' }}>
+                                            <div style={{
+                                                fontSize: 48,
+                                                fontWeight: 700,
+                                                color: parseFloat(advancedData.data.leadQualityScore.average) >= 50 ? '#10b981' : '#f59e0b'
+                                            }}>
+                                                {advancedData.data.leadQualityScore.average}
+                                            </div>
+                                            <div className="text-muted" style={{ fontSize: 12 }}>Average LQS</div>
+                                        </div>
+                                        <div style={{ display: 'grid', gap: 8 }}>
+                                            {(advancedData.data.leadQualityScore.campaigns || []).slice(0, 5).map((c: any) => (
+                                                <div key={c.id} style={{
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    gap: 12,
+                                                    padding: '10px 16px',
+                                                    background: 'var(--background)',
+                                                    borderRadius: 8
+                                                }}>
+                                                    <div style={{
+                                                        width: 36,
+                                                        height: 36,
+                                                        borderRadius: 8,
+                                                        background: c.gradeColor,
+                                                        color: 'white',
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        justifyContent: 'center',
+                                                        fontWeight: 700,
+                                                        fontSize: 16
+                                                    }}>
+                                                        {c.grade}
+                                                    </div>
+                                                    <div style={{ flex: 1 }}>
+                                                        <div style={{ fontWeight: 500, fontSize: 13 }}>{c.name}</div>
+                                                        <div style={{ fontSize: 11, color: 'var(--muted)' }}>
+                                                            CTR: {c.metrics.ctr}% • Conv: {c.metrics.conversionRate}%
+                                                        </div>
+                                                    </div>
+                                                    <div style={{ fontWeight: 700, color: c.gradeColor }}>{c.lqs}</div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </SectionCard>
+                            )}
+
+                            {/* Creative Forensics */}
+                            {(advancedData.data.creativeForensics || []).length > 0 && (
+                                <SectionCard title="🔍 Creative Forensics" subtitle="Pattern detection for each creative — based on CTR vs conversions matrix">
+                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 16 }}>
+                                        {(advancedData.data.creativeForensics || []).slice(0, 8).map((ad: any) => {
+                                            // Determine pattern based on data if not provided
+                                            const getPattern = () => {
+                                                if (ad.pattern?.label) return ad.pattern;
+                                                // Fallback pattern detection
+                                                const ctr = parseFloat(ad.ctr) || 0;
+                                                const conv = ad.conversions || 0;
+                                                if (ctr >= 4 && conv >= 30) return { label: '🏆 Winner', color: '#10b981', insight: 'High engagement AND conversions' };
+                                                if (ctr >= 4 && conv < 10) return { label: '⚠️ Clickbait Risk', color: '#f59e0b', insight: 'Good clicks but low conversions - check landing page' };
+                                                if (ctr < 2 && conv >= 20) return { label: '💎 Hidden Gem', color: '#6366f1', insight: 'Low clicks but converts well - optimize creative' };
+                                                if (conv >= 20) return { label: '✓ Performer', color: '#0ea5e9', insight: 'Solid conversion performance' };
+                                                return { label: '📊 Needs Data', color: '#6b7280', insight: 'Not enough conversions to classify pattern' };
+                                            };
+                                            const pattern = getPattern();
+
+                                            return (
+                                                <div key={ad.id} style={{
+                                                    background: 'var(--background)',
+                                                    borderRadius: 12,
+                                                    overflow: 'hidden',
+                                                    border: pattern.label?.includes('Winner') || pattern.label?.includes('Gem')
+                                                        ? '2px solid #10b981'
+                                                        : pattern.label?.includes('Clickbait')
+                                                            ? '2px solid #f59e0b'
+                                                            : '1px solid var(--border)'
+                                                }}>
+                                                    {/* Pattern Badge */}
+                                                    <div style={{
+                                                        padding: '10px 16px',
+                                                        background: pattern.color || '#6b7280',
+                                                        color: 'white',
+                                                        fontWeight: 600,
+                                                        fontSize: 13,
+                                                        display: 'flex',
+                                                        justifyContent: 'space-between',
+                                                        alignItems: 'center'
+                                                    }}>
+                                                        <span>{pattern.label}</span>
+                                                        {ad.fatigue?.status !== 'healthy' && (
+                                                            <span style={{
+                                                                padding: '2px 8px',
+                                                                background: 'rgba(255,255,255,0.2)',
+                                                                borderRadius: 4,
+                                                                fontSize: 10
+                                                            }}>
+                                                                {ad.fatigue?.status === 'critical' ? '🔴 Fatigued' : '🟡 Watch'}
+                                                            </span>
+                                                        )}
+                                                    </div>
+
+                                                    <div style={{ padding: 16 }}>
+                                                        <div style={{ fontWeight: 500, fontSize: 13, marginBottom: 8 }}>{ad.name}</div>
+                                                        <p style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 12 }}>{pattern.insight}</p>
+
+                                                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, textAlign: 'center' }}>
+                                                            <div>
+                                                                <div style={{ fontSize: 14, fontWeight: 600 }}>{ad.ctr}%</div>
+                                                                <div style={{ fontSize: 10, color: 'var(--muted)' }}>CTR</div>
+                                                            </div>
+                                                            <div>
+                                                                <div style={{ fontSize: 14, fontWeight: 600 }}>{ad.conversions}</div>
+                                                                <div style={{ fontSize: 10, color: 'var(--muted)' }}>Conv</div>
+                                                            </div>
+                                                            <div>
+                                                                <div style={{ fontSize: 14, fontWeight: 600 }}>{formatCurrency(ad.spend * 100)}</div>
+                                                                <div style={{ fontSize: 10, color: 'var(--muted)' }}>Spend</div>
+                                                            </div>
+                                                        </div>
+
+                                                        {ad.hasVideo && ad.videoMetrics && (
+                                                            <div style={{ marginTop: 12, padding: '8px 12px', background: 'rgba(99, 102, 241, 0.1)', borderRadius: 6 }}>
+                                                                <div style={{ fontSize: 10, color: 'var(--muted)', marginBottom: 4 }}>Video Retention</div>
+                                                                <div style={{ fontSize: 12 }}>
+                                                                    Hook: <strong>{ad.videoMetrics.hookRate}%</strong> •
+                                                                    Complete: <strong>{ad.videoMetrics.completionRate}%</strong>
+                                                                </div>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </SectionCard>
+                            )}
+
+                            {/* Learning Phase Status */}
+                            {(advancedData.data.learningPhase || []).length > 0 && (
+                                <SectionCard
+                                    title="📚 Learning Phase Status"
+                                    subtitle="Meta needs ~50 conversions per week to optimize delivery — track progress here"
+                                >
+                                    <div style={{ display: 'grid', gap: 8 }}>
+                                        {(advancedData.data.learningPhase || []).slice(0, 10).map((adset: any) => {
+                                            // Determine status if not provided
+                                            const getStatus = () => {
+                                                if (adset.learningStatus?.label && adset.learningStatus.label !== 'Unknown') {
+                                                    return adset.learningStatus;
+                                                }
+                                                // Fallback status based on conversions
+                                                const conv = adset.conversions || 0;
+                                                if (conv >= 50) return { icon: '✅', label: 'Optimized', color: '#10b981', safeToScale: true };
+                                                if (conv >= 25) return { icon: '📈', label: 'Learning (50%)', color: '#f59e0b', progress: (conv / 50) * 100 };
+                                                if (conv > 0) return { icon: '🔄', label: `Learning (${conv}/50)`, color: '#6366f1', progress: (conv / 50) * 100 };
+                                                return { icon: '⏳', label: 'Not Started', color: '#94a3b8' };
+                                            };
+                                            const status = getStatus();
+
+                                            return (
+                                                <div key={adset.id} style={{
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    gap: 16,
+                                                    padding: '12px 16px',
+                                                    background: 'var(--background)',
+                                                    borderRadius: 8,
+                                                    borderLeft: `4px solid ${status.color || '#6b7280'}`
+                                                }}>
+                                                    <div style={{ fontSize: 24 }}>{status.icon}</div>
+                                                    <div style={{ flex: 1 }}>
+                                                        <div style={{ fontWeight: 500, fontSize: 13 }}>{adset.name}</div>
+                                                        <div style={{ fontSize: 11, color: 'var(--muted)' }}>
+                                                            {status.label} • {adset.conversions || 0} conversions • {formatCurrency((adset.spend || 0) * 100)} spent
+                                                        </div>
+                                                    </div>
+                                                    {status.progress !== undefined && (
+                                                        <div style={{ width: 100 }}>
+                                                            <div style={{
+                                                                height: 6,
+                                                                background: '#e5e7eb',
+                                                                borderRadius: 3,
+                                                                overflow: 'hidden'
+                                                            }}>
+                                                                <div style={{
+                                                                    height: '100%',
+                                                                    width: `${Math.min(status.progress, 100)}%`,
+                                                                    background: status.color,
+                                                                    borderRadius: 3
+                                                                }} />
+                                                            </div>
+                                                            <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 4, textAlign: 'center' }}>
+                                                                {Math.round(status.progress)}% to goal
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                    {status.safeToScale && (
+                                                        <span style={{
+                                                            padding: '4px 10px',
+                                                            background: '#dcfce7',
+                                                            color: '#166534',
+                                                            borderRadius: 20,
+                                                            fontSize: 11,
+                                                            fontWeight: 600
+                                                        }}>
+                                                            Safe to Scale
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                    <div style={{ marginTop: 16, padding: '12px 16px', background: 'rgba(99, 102, 241, 0.1)', borderRadius: 8, fontSize: 12 }}>
+                                        <strong>Why this matters:</strong> Ad sets in "Learning" may have unstable performance. Wait until they reach 50+ conversions before making major changes or scaling.
+                                    </div>
+                                </SectionCard>
+                            )}
+
+                            {/* Retargeting Lift */}
+                            {advancedData.data.retargetingLift && (
+                                <SectionCard title="🔄 Retargeting Lift Analysis" subtitle="Compare cold vs retargeting performance to diagnose acquisition quality">
+                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', gap: 24, alignItems: 'center' }}>
+                                        {/* Cold Traffic */}
+                                        <div style={{ textAlign: 'center', padding: 20, background: 'rgba(99, 102, 241, 0.1)', borderRadius: 12 }}>
+                                            <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 8 }}>Cold Traffic</div>
+                                            <div style={{ fontSize: 11, color: 'var(--muted)' }}>{advancedData.data.retargetingLift.coldCampaigns} campaigns</div>
+                                            <div style={{ fontSize: 28, fontWeight: 700, color: '#6366f1', marginTop: 8 }}>
+                                                {advancedData.data.retargetingLift.cold.conversionRate}%
+                                            </div>
+                                            <div style={{ fontSize: 11, color: 'var(--muted)' }}>Conv Rate</div>
+                                            <div style={{ marginTop: 12, fontSize: 12 }}>
+                                                CPA: {advancedData.data.retargetingLift.cold.cpa ? formatCurrency(parseFloat(advancedData.data.retargetingLift.cold.cpa) * 100) : 'N/A'}
+                                            </div>
+                                        </div>
+
+                                        {/* Lift Arrow */}
+                                        <div style={{ textAlign: 'center' }}>
+                                            <div style={{
+                                                fontSize: 32,
+                                                fontWeight: 700,
+                                                color: parseFloat(advancedData.data.retargetingLift.lift) > 20 ? '#10b981'
+                                                    : parseFloat(advancedData.data.retargetingLift.lift) > 0 ? '#f59e0b' : '#ef4444'
+                                            }}>
+                                                {parseFloat(advancedData.data.retargetingLift.lift) > 0 ? '+' : ''}{advancedData.data.retargetingLift.lift}%
+                                            </div>
+                                            <div style={{ fontSize: 11, color: 'var(--muted)' }}>Lift</div>
+                                            <ArrowRight size={24} style={{ marginTop: 8, color: 'var(--muted)' }} />
+                                        </div>
+
+                                        {/* Retarget Traffic */}
+                                        <div style={{ textAlign: 'center', padding: 20, background: 'rgba(16, 185, 129, 0.1)', borderRadius: 12 }}>
+                                            <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 8 }}>Retargeting</div>
+                                            <div style={{ fontSize: 11, color: 'var(--muted)' }}>{advancedData.data.retargetingLift.retargetCampaigns} campaigns</div>
+                                            <div style={{ fontSize: 28, fontWeight: 700, color: '#10b981', marginTop: 8 }}>
+                                                {advancedData.data.retargetingLift.retarget.conversionRate}%
+                                            </div>
+                                            <div style={{ fontSize: 11, color: 'var(--muted)' }}>Conv Rate</div>
+                                            <div style={{ marginTop: 12, fontSize: 12 }}>
+                                                CPA: {advancedData.data.retargetingLift.retarget.cpa ? formatCurrency(parseFloat(advancedData.data.retargetingLift.retarget.cpa) * 100) : 'N/A'}
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div style={{
+                                        marginTop: 20,
+                                        padding: '16px 20px',
+                                        background: advancedData.data.retargetingLift.status === 'excellent' || advancedData.data.retargetingLift.status === 'good'
+                                            ? 'linear-gradient(135deg, rgba(16, 185, 129, 0.1), rgba(34, 197, 94, 0.1))'
+                                            : advancedData.data.retargetingLift.status === 'warning'
+                                                ? 'linear-gradient(135deg, rgba(245, 158, 11, 0.1), rgba(251, 191, 36, 0.1))'
+                                                : 'linear-gradient(135deg, rgba(239, 68, 68, 0.1), rgba(248, 113, 113, 0.1))',
+                                        borderRadius: 8
+                                    }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                                            <Zap size={20} style={{
+                                                color: advancedData.data.retargetingLift.status === 'excellent' || advancedData.data.retargetingLift.status === 'good'
+                                                    ? '#10b981' : advancedData.data.retargetingLift.status === 'warning' ? '#f59e0b' : '#ef4444'
+                                            }} />
+                                            <div style={{ fontSize: 13 }}>{advancedData.data.retargetingLift.insight}</div>
+                                        </div>
+                                    </div>
+                                </SectionCard>
+                            )}
+
+                            {/* Placement Intent */}
+                            {(advancedData.data.placementIntent || []).length > 0 && (
+                                <SectionCard title="🎯 Placement Intent Weighting" subtitle="Not all placements have equal intent - see intent-adjusted metrics">
+                                    <div style={{ overflowX: 'auto' }}>
+                                        <table className="table">
+                                            <thead>
+                                                <tr>
+                                                    <th>Placement</th>
+                                                    <th>Intent</th>
+                                                    <th>Conversions</th>
+                                                    <th>Weighted Conv</th>
+                                                    <th>CPA</th>
+                                                    <th>Intent-Adjusted CPA</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {(advancedData.data.placementIntent || []).slice(0, 10).map((p: any, i: number) => (
+                                                    <tr key={i}>
+                                                        <td style={{ fontWeight: 500 }}>{p.displayName}</td>
+                                                        <td>
+                                                            <span style={{
+                                                                padding: '4px 10px',
+                                                                borderRadius: 20,
+                                                                background: `${p.intentColor}20`,
+                                                                color: p.intentColor,
+                                                                fontSize: 11,
+                                                                fontWeight: 600
+                                                            }}>
+                                                                {p.intentLabel} ({p.intentWeight}x)
+                                                            </span>
+                                                        </td>
+                                                        <td>{p.conversions}</td>
+                                                        <td style={{ fontWeight: 600 }}>{p.weightedConversions.toFixed(1)}</td>
+                                                        <td>{p.effectiveCPA ? formatCurrency(parseFloat(p.effectiveCPA) * 100) : '—'}</td>
+                                                        <td style={{ color: p.intentColor, fontWeight: 600 }}>
+                                                            {p.intentAdjustedCPA ? formatCurrency(parseFloat(p.intentAdjustedCPA) * 100) : '—'}
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </SectionCard>
+                            )}
+                        </>
+                    ) : (
+                        <div style={{ textAlign: 'center', padding: 40 }}>
+                            <p className="text-muted">No advanced analytics data available for this account.</p>
+                        </div>
+                    )}
+                </div>
+            )}
+
+            {/* ==================== DEEP INSIGHTS TAB ==================== */}
+            {activeTab === 'deep' && (
+                <div style={{ display: 'grid', gap: 20 }}>
+                    {deepInsightsLoading ? (
+                        <div style={{ textAlign: 'center', padding: 40 }}>
+                            <div className="spinner" style={{ margin: '0 auto 16px' }}></div>
+                            <p className="text-muted">Running deep analysis...</p>
+                        </div>
+                    ) : deepInsightsData?.data ? (
+                        <>
+                            {/* Bounce Gap Analysis - Overall */}
+                            {deepInsightsData.data.bounceGapAnalysis && (
+                                <SectionCard
+                                    title="🔍 Bounce Gap Analysis"
+                                    subtitle="The gap between Link Clicks and Landing Page Views reveals traffic quality"
+                                >
+                                    <div style={{ display: 'grid', gridTemplateColumns: '200px 1fr', gap: 24 }}>
+                                        {/* Bounce Gap Score Circle */}
+                                        <div style={{ textAlign: 'center' }}>
+                                            <div style={{
+                                                width: 140,
+                                                height: 140,
+                                                borderRadius: '50%',
+                                                background: deepInsightsData.data.bounceGapAnalysis.severity === 'critical'
+                                                    ? 'linear-gradient(135deg, #ef4444, #f87171)'
+                                                    : deepInsightsData.data.bounceGapAnalysis.severity === 'warning'
+                                                        ? 'linear-gradient(135deg, #f59e0b, #fbbf24)'
+                                                        : deepInsightsData.data.bounceGapAnalysis.severity === 'acceptable'
+                                                            ? 'linear-gradient(135deg, #0ea5e9, #38bdf8)'
+                                                            : 'linear-gradient(135deg, #10b981, #34d399)',
+                                                display: 'flex',
+                                                flexDirection: 'column',
+                                                alignItems: 'center',
+                                                justifyContent: 'center',
+                                                margin: '0 auto',
+                                                boxShadow: '0 8px 24px rgba(0,0,0,0.15)'
+                                            }}>
+                                                <div style={{ fontSize: 28, fontWeight: 700, color: 'white' }}>
+                                                    {deepInsightsData.data.bounceGapAnalysis.bounceGap}%
+                                                </div>
+                                                <div style={{ fontSize: 11, color: 'white', opacity: 0.9 }}>
+                                                    Bounce Gap
+                                                </div>
+                                            </div>
+                                            <div style={{ marginTop: 12, fontWeight: 600, textTransform: 'capitalize' }}>
+                                                {deepInsightsData.data.bounceGapAnalysis.severity}
+                                            </div>
+                                        </div>
+
+                                        {/* Details */}
+                                        <div>
+                                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginBottom: 16 }}>
+                                                <div style={{ padding: 16, background: 'var(--background)', borderRadius: 8, textAlign: 'center' }}>
+                                                    <div className="text-muted" style={{ fontSize: 11 }}>Link Clicks</div>
+                                                    <div style={{ fontSize: 20, fontWeight: 700 }}>{formatNumber(deepInsightsData.data.bounceGapAnalysis.outboundClicks)}</div>
+                                                </div>
+                                                <div style={{ padding: 16, background: 'var(--background)', borderRadius: 8, textAlign: 'center' }}>
+                                                    <div className="text-muted" style={{ fontSize: 11 }}>Landing Page Views</div>
+                                                    <div style={{ fontSize: 20, fontWeight: 700 }}>{formatNumber(deepInsightsData.data.bounceGapAnalysis.landingPageViews)}</div>
+                                                </div>
+                                                <div style={{ padding: 16, background: 'var(--background)', borderRadius: 8, textAlign: 'center' }}>
+                                                    <div className="text-muted" style={{ fontSize: 11 }}>Users Lost</div>
+                                                    <div style={{ fontSize: 20, fontWeight: 700, color: '#ef4444' }}>
+                                                        {formatNumber(deepInsightsData.data.bounceGapAnalysis.outboundClicks - deepInsightsData.data.bounceGapAnalysis.landingPageViews)}
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div style={{ padding: '12px 16px', background: 'rgba(99, 102, 241, 0.1)', borderRadius: 8, marginBottom: 12 }}>
+                                                <div style={{ fontWeight: 600, marginBottom: 4 }}>{deepInsightsData.data.bounceGapAnalysis.message}</div>
+                                                <div style={{ fontSize: 12, color: 'var(--muted)' }}>{deepInsightsData.data.bounceGapAnalysis.recommendation}</div>
+                                            </div>
+
+                                            {(deepInsightsData.data.bounceGapAnalysis.possibleReasons || []).length > 0 && (
+                                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                                                    {deepInsightsData.data.bounceGapAnalysis.possibleReasons.map((reason: string, i: number) => (
+                                                        <span key={i} style={{
+                                                            padding: '4px 12px',
+                                                            background: 'rgba(239, 68, 68, 0.1)',
+                                                            color: '#ef4444',
+                                                            borderRadius: 20,
+                                                            fontSize: 11
+                                                        }}>
+                                                            {reason}
+                                                        </span>
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                </SectionCard>
+                            )}
+
+                            {/* Per-Campaign Funnel Comparison */}
+                            {(deepInsightsData.data.campaignFunnels || []).length > 0 && (
+                                <SectionCard
+                                    title="📊 Per-Campaign Conversion Velocity"
+                                    subtitle="Compare funnel performance across campaigns to see why some convert better"
+                                >
+                                    {/* Comparison Header if we have best/worst */}
+                                    {deepInsightsData.data.compareFunnels && (
+                                        <div style={{
+                                            display: 'grid',
+                                            gridTemplateColumns: '1fr auto 1fr',
+                                            gap: 20,
+                                            marginBottom: 24,
+                                            padding: 16,
+                                            background: 'var(--background)',
+                                            borderRadius: 12
+                                        }}>
+                                            {/* Best */}
+                                            <div style={{ textAlign: 'center' }}>
+                                                <div style={{ color: '#10b981', fontSize: 12, fontWeight: 600, marginBottom: 4 }}>🏆 BEST PERFORMER</div>
+                                                <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 8 }}>
+                                                    {deepInsightsData.data.compareFunnels.best?.campaignName}
+                                                </div>
+                                                <div style={{ display: 'flex', justifyContent: 'center', gap: 16 }}>
+                                                    <div>
+                                                        <div style={{ fontSize: 20, fontWeight: 700, color: '#10b981' }}>
+                                                            {deepInsightsData.data.compareFunnels.best?.conversions.roas}x
+                                                        </div>
+                                                        <div style={{ fontSize: 10, color: 'var(--muted)' }}>ROAS</div>
+                                                    </div>
+                                                    <div>
+                                                        <div style={{ fontSize: 20, fontWeight: 700, color: '#6366f1' }}>
+                                                            {deepInsightsData.data.compareFunnels.best?.conversions.atcToPurchaseRate}%
+                                                        </div>
+                                                        <div style={{ fontSize: 10, color: 'var(--muted)' }}>Cart→Purchase</div>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            {/* VS */}
+                                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+                                                <div style={{ fontWeight: 700, color: 'var(--muted)' }}>VS</div>
+                                                {deepInsightsData.data.compareFunnels.comparison && (
+                                                    <div style={{ fontSize: 11, color: 'var(--muted)', textAlign: 'center', marginTop: 8 }}>
+                                                        +{deepInsightsData.data.compareFunnels.comparison.roasDiff}x ROAS<br />
+                                                        +{deepInsightsData.data.compareFunnels.comparison.atcRateDiff}% conv
+                                                    </div>
+                                                )}
+                                            </div>
+
+                                            {/* Worst */}
+                                            <div style={{ textAlign: 'center' }}>
+                                                <div style={{ color: '#ef4444', fontSize: 12, fontWeight: 600, marginBottom: 4 }}>⚠️ NEEDS WORK</div>
+                                                <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 8 }}>
+                                                    {deepInsightsData.data.compareFunnels.worst?.campaignName}
+                                                </div>
+                                                <div style={{ display: 'flex', justifyContent: 'center', gap: 16 }}>
+                                                    <div>
+                                                        <div style={{ fontSize: 20, fontWeight: 700, color: '#ef4444' }}>
+                                                            {deepInsightsData.data.compareFunnels.worst?.conversions.roas}x
+                                                        </div>
+                                                        <div style={{ fontSize: 10, color: 'var(--muted)' }}>ROAS</div>
+                                                    </div>
+                                                    <div>
+                                                        <div style={{ fontSize: 20, fontWeight: 700, color: '#f59e0b' }}>
+                                                            {deepInsightsData.data.compareFunnels.worst?.conversions.atcToPurchaseRate}%
+                                                        </div>
+                                                        <div style={{ fontSize: 10, color: 'var(--muted)' }}>Cart→Purchase</div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* Campaign Funnel Table */}
+                                    <div style={{ overflowX: 'auto' }}>
+                                        <table className="table">
+                                            <thead>
+                                                <tr>
+                                                    <th>Campaign</th>
+                                                    <th>Bounce Gap</th>
+                                                    <th>Link→LPV</th>
+                                                    <th>LPV→ATC</th>
+                                                    <th>ATC→Buy</th>
+                                                    <th>ROAS</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {(deepInsightsData.data.campaignFunnels || []).slice(0, 10).map((c: any) => (
+                                                    <tr key={c.campaignId}>
+                                                        <td>
+                                                            <div style={{ fontWeight: 500, maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                                                {c.campaignName}
+                                                            </div>
+                                                            <div style={{ fontSize: 10, color: 'var(--muted)' }}>
+                                                                {formatCurrency(c.spend * 100)} spent
+                                                            </div>
+                                                        </td>
+                                                        <td>
+                                                            <span style={{
+                                                                padding: '4px 10px',
+                                                                borderRadius: 20,
+                                                                fontSize: 11,
+                                                                fontWeight: 600,
+                                                                background: c.dropoffs.bounceQuality === 'critical' ? '#fee2e2' :
+                                                                    c.dropoffs.bounceQuality === 'warning' ? '#fef3c7' :
+                                                                        c.dropoffs.bounceQuality === 'acceptable' ? '#e0f2fe' : '#dcfce7',
+                                                                color: c.dropoffs.bounceQuality === 'critical' ? '#991b1b' :
+                                                                    c.dropoffs.bounceQuality === 'warning' ? '#92400e' :
+                                                                        c.dropoffs.bounceQuality === 'acceptable' ? '#0369a1' : '#166534'
+                                                            }}>
+                                                                {c.dropoffs.bounceGap}%
+                                                            </span>
+                                                        </td>
+                                                        <td style={{ fontSize: 13 }}>
+                                                            {c.funnel.linkClicks} → {c.funnel.landingPageViews}
+                                                        </td>
+                                                        <td style={{ fontSize: 13 }}>
+                                                            {c.funnel.landingPageViews} → {c.funnel.addToCart}
+                                                        </td>
+                                                        <td>
+                                                            <span style={{ fontWeight: 600, color: c.conversions.atcToPurchaseRate >= 50 ? '#10b981' : '#f59e0b' }}>
+                                                                {c.conversions.atcToPurchaseRate}%
+                                                            </span>
+                                                        </td>
+                                                        <td>
+                                                            <span style={{ fontWeight: 700, color: c.conversions.roas >= 1 ? '#10b981' : '#ef4444' }}>
+                                                                {c.conversions.roas}x
+                                                            </span>
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </SectionCard>
+                            )}
+
+                            {/* Video Hook Analysis */}
+                            {deepInsightsData.data.videoSummary && (
+                                <SectionCard
+                                    title="📹 Video Hook & Retention Analysis"
+                                    subtitle="Understand where viewers drop off to optimize your video ads"
+                                >
+                                    {/* Summary Stats */}
+                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 24 }}>
+                                        <div style={{ padding: 16, background: 'var(--background)', borderRadius: 8, textAlign: 'center' }}>
+                                            <div className="text-muted" style={{ fontSize: 11 }}>Videos Analyzed</div>
+                                            <div style={{ fontSize: 24, fontWeight: 700 }}>{deepInsightsData.data.videoSummary.totalVideos}</div>
+                                        </div>
+                                        <div style={{ padding: 16, background: 'var(--background)', borderRadius: 8, textAlign: 'center' }}>
+                                            <div className="text-muted" style={{ fontSize: 11 }}>Avg Hook Rate (25%)</div>
+                                            <div style={{ fontSize: 24, fontWeight: 700, color: '#6366f1' }}>{deepInsightsData.data.videoSummary.avgHookRate}%</div>
+                                        </div>
+                                        <div style={{ padding: 16, background: 'var(--background)', borderRadius: 8, textAlign: 'center' }}>
+                                            <div className="text-muted" style={{ fontSize: 11 }}>Avg Completion</div>
+                                            <div style={{ fontSize: 24, fontWeight: 700, color: '#10b981' }}>{deepInsightsData.data.videoSummary.avgCompletionRate}%</div>
+                                        </div>
+                                        <div style={{ padding: 16, background: 'var(--background)', borderRadius: 8, textAlign: 'center' }}>
+                                            <div className="text-muted" style={{ fontSize: 11 }}>Needs Improvement</div>
+                                            <div style={{ fontSize: 24, fontWeight: 700, color: '#f59e0b' }}>{deepInsightsData.data.videoSummary.needsWork}</div>
+                                        </div>
+                                    </div>
+
+                                    {/* Video Cards */}
+                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 16 }}>
+                                        {(deepInsightsData.data.videoHookAnalysis || []).slice(0, 8).map((v: any) => (
+                                            <div key={v.adId} style={{
+                                                background: 'var(--background)',
+                                                borderRadius: 12,
+                                                overflow: 'hidden',
+                                                border: v.pattern.includes('Winner') ? '2px solid #10b981' :
+                                                    v.pattern.includes('Weak Hook') ? '2px solid #ef4444' : '1px solid var(--border)'
+                                            }}>
+                                                {/* Pattern Header */}
+                                                <div style={{
+                                                    padding: '10px 16px',
+                                                    background: v.patternColor,
+                                                    color: 'white',
+                                                    fontWeight: 600,
+                                                    fontSize: 13
+                                                }}>
+                                                    {v.pattern}
+                                                </div>
+
+                                                <div style={{ padding: 16 }}>
+                                                    <div style={{ fontWeight: 500, fontSize: 13, marginBottom: 4 }}>{v.adName}</div>
+                                                    <p style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 12 }}>{v.insight}</p>
+
+                                                    {/* Retention Curve */}
+                                                    <div style={{ display: 'flex', alignItems: 'end', gap: 4, height: 60, marginBottom: 12 }}>
+                                                        {(v.retentionCurve || []).map((point: any, i: number) => (
+                                                            <div key={i} style={{ flex: 1, textAlign: 'center' }}>
+                                                                <div style={{
+                                                                    height: `${Math.max(point.value, 5)}%`,
+                                                                    background: `linear-gradient(to top, ${v.patternColor}, ${v.patternColor}88)`,
+                                                                    borderRadius: '4px 4px 0 0',
+                                                                    minHeight: 4
+                                                                }}></div>
+                                                                <div style={{ fontSize: 9, color: 'var(--muted)', marginTop: 2 }}>{point.stage}</div>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+
+                                                    {/* Metrics */}
+                                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, textAlign: 'center' }}>
+                                                        <div>
+                                                            <div style={{ fontSize: 14, fontWeight: 600 }}>{v.retention.hookRate}%</div>
+                                                            <div style={{ fontSize: 9, color: 'var(--muted)' }}>Hook Rate</div>
+                                                        </div>
+                                                        <div>
+                                                            <div style={{ fontSize: 14, fontWeight: 600 }}>{v.retention.holdRate}%</div>
+                                                            <div style={{ fontSize: 9, color: 'var(--muted)' }}>Hold Rate</div>
+                                                        </div>
+                                                        <div>
+                                                            <div style={{ fontSize: 14, fontWeight: 600 }}>{v.conversions}</div>
+                                                            <div style={{ fontSize: 9, color: 'var(--muted)' }}>Conv</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </SectionCard>
+                            )}
+
+                            {/* Placement Arbitrage */}
+                            {deepInsightsData.data.arbitrageSummary && (
+                                <SectionCard
+                                    title="💰 Placement Arbitrage Detection"
+                                    subtitle="Find where your budget is being wasted on low-intent placements"
+                                >
+                                    {/* Summary Cards */}
+                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 24 }}>
+                                        <div style={{ padding: 16, background: 'var(--background)', borderRadius: 8, textAlign: 'center' }}>
+                                            <div className="text-muted" style={{ fontSize: 11 }}>Total Placements</div>
+                                            <div style={{ fontSize: 24, fontWeight: 700 }}>{deepInsightsData.data.arbitrageSummary.totalPlacements}</div>
+                                        </div>
+                                        <div style={{ padding: 16, background: 'var(--background)', borderRadius: 8, textAlign: 'center' }}>
+                                            <div className="text-muted" style={{ fontSize: 11 }}>Avg CPA</div>
+                                            <div style={{ fontSize: 24, fontWeight: 700 }}>{formatCurrency(deepInsightsData.data.arbitrageSummary.avgCPA * 100)}</div>
+                                        </div>
+                                        <div style={{ padding: 16, background: 'rgba(239, 68, 68, 0.1)', borderRadius: 8, textAlign: 'center' }}>
+                                            <div style={{ color: '#ef4444', fontSize: 11 }}>Wasteful Placements</div>
+                                            <div style={{ fontSize: 24, fontWeight: 700, color: '#ef4444' }}>{deepInsightsData.data.arbitrageSummary.wastefulPlacements}</div>
+                                        </div>
+                                        <div style={{ padding: 16, background: 'rgba(239, 68, 68, 0.1)', borderRadius: 8, textAlign: 'center' }}>
+                                            <div style={{ color: '#ef4444', fontSize: 11 }}>Wasted Spend</div>
+                                            <div style={{ fontSize: 24, fontWeight: 700, color: '#ef4444' }}>
+                                                {formatCurrency(deepInsightsData.data.arbitrageSummary.wastedSpend * 100)}
+                                            </div>
+                                            <div style={{ fontSize: 10, color: '#ef4444' }}>
+                                                ({deepInsightsData.data.arbitrageSummary.wastedPercent}% of budget)
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Recommendation */}
+                                    {deepInsightsData.data.arbitrageSummary.wastedPercent > 5 && (
+                                        <div style={{
+                                            marginBottom: 24,
+                                            padding: '16px 20px',
+                                            background: 'linear-gradient(135deg, rgba(239, 68, 68, 0.1), rgba(249, 115, 22, 0.1))',
+                                            borderRadius: 8,
+                                            border: '1px solid rgba(239, 68, 68, 0.3)'
+                                        }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                                                <Zap size={20} style={{ color: '#ef4444' }} />
+                                                <div style={{ fontSize: 13 }}>{deepInsightsData.data.arbitrageSummary.recommendation}</div>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* Placement Table */}
+                                    <div style={{ overflowX: 'auto' }}>
+                                        <table className="table">
+                                            <thead>
+                                                <tr>
+                                                    <th>Placement</th>
+                                                    <th>Intent</th>
+                                                    <th>Spend</th>
+                                                    <th>CPA</th>
+                                                    <th>Adj. CPA</th>
+                                                    <th>ROAS</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {(deepInsightsData.data.placementArbitrage || []).slice(0, 12).map((p: any, i: number) => (
+                                                    <tr key={i}>
+                                                        <td>
+                                                            <div style={{ fontWeight: 500 }}>{p.fullName}</div>
+                                                            <div style={{ fontSize: 10, color: 'var(--muted)' }}>
+                                                                {formatNumber(p.metrics.impressions)} imp • {formatNumber(p.metrics.clicks)} clicks
+                                                            </div>
+                                                        </td>
+                                                        <td>
+                                                            <span style={{
+                                                                padding: '4px 10px',
+                                                                borderRadius: 20,
+                                                                background: `${p.intent.color}20`,
+                                                                color: p.intent.color,
+                                                                fontSize: 11,
+                                                                fontWeight: 600
+                                                            }}>
+                                                                {p.intent.label}
+                                                            </span>
+                                                        </td>
+                                                        <td>{formatCurrency(p.metrics.spend * 100)}</td>
+                                                        <td>{p.metrics.cpa > 0 ? formatCurrency(p.metrics.cpa * 100) : '—'}</td>
+                                                        <td style={{ fontWeight: 600, color: p.intent.color }}>
+                                                            {p.metrics.adjustedCPA > 0 ? formatCurrency(p.metrics.adjustedCPA * 100) : '—'}
+                                                        </td>
+                                                        <td>
+                                                            <span style={{ fontWeight: 700, color: p.metrics.roas >= 1 ? '#10b981' : p.metrics.roas > 0 ? '#f59e0b' : 'var(--muted)' }}>
+                                                                {p.metrics.roas > 0 ? `${p.metrics.roas}x` : '—'}
+                                                            </span>
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+
+                                    <div style={{ marginTop: 16, padding: '12px 16px', background: 'rgba(99, 102, 241, 0.1)', borderRadius: 8, fontSize: 12 }}>
+                                        <strong>Intent-Adjusted CPA:</strong> This metric accounts for the inherent value of each placement. Feed/Search users have higher intent than Reels/Audience Network users, so a higher CPA may still be worth it.
+                                    </div>
+                                </SectionCard>
+                            )}
+                        </>
+                    ) : (
+                        <div style={{ textAlign: 'center', padding: 40 }}>
+                            <p className="text-muted">No deep insights data available for this account.</p>
                         </div>
                     )}
                 </div>

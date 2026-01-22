@@ -72,11 +72,12 @@ function InfoTooltip({ text }: { text: string }) {
 
 // ==================== METRIC CARD ====================
 
-function MetricCard({ label, value, icon: Icon, trend, color, tooltip }: {
+function MetricCard({ label, value, icon: Icon, trend, trendLabel, color, tooltip }: {
     label: string;
     value: string | number;
     icon: React.ElementType;
     trend?: number;
+    trendLabel?: string; // e.g., "vs last week", "vs last month"
     color: string;
     tooltip?: string;
 }) {
@@ -98,7 +99,7 @@ function MetricCard({ label, value, icon: Icon, trend, color, tooltip }: {
                         <TrendingDown size={14} className="stat-down" />
                     )}
                     <span className={trend >= 0 ? 'stat-up' : 'stat-down'} style={{ fontSize: 12, fontWeight: 500 }}>
-                        {Math.abs(trend)}%
+                        {trend >= 0 ? '+' : ''}{trend}% {trendLabel && <span style={{ fontWeight: 400, opacity: 0.8 }}>{trendLabel}</span>}
                     </span>
                 </div>
             )}
@@ -108,14 +109,31 @@ function MetricCard({ label, value, icon: Icon, trend, color, tooltip }: {
 
 // ==================== SECTION CARD ====================
 
-function SectionCard({ title, subtitle, children }: { title: string; subtitle?: string; children: React.ReactNode }) {
+function SectionCard({ title, subtitle, timePeriod, children }: {
+    title: string; subtitle?: string; timePeriod?: string; children: React.ReactNode
+}) {
     return (
         <div className="card" style={{ marginBottom: 20 }}>
-            <div className="card-header" style={{ marginBottom: 16 }}>
+            <div className="card-header" style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                 <div>
                     <h3 style={{ fontSize: 15, fontWeight: 600 }}>{title}</h3>
                     {subtitle && <p className="text-muted" style={{ fontSize: 12, marginTop: 2 }}>{subtitle}</p>}
                 </div>
+                {timePeriod && (
+                    <span style={{
+                        padding: '4px 10px',
+                        background: 'var(--background)',
+                        borderRadius: 6,
+                        fontSize: 11,
+                        color: 'var(--muted)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 4
+                    }}>
+                        <Clock size={12} />
+                        {timePeriod}
+                    </span>
+                )}
             </div>
             {children}
         </div>

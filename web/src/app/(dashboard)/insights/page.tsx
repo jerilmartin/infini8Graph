@@ -59,16 +59,31 @@ function InfoTooltip({ text }: { text: string }) {
     );
 }
 
-function SectionCard({ title, subtitle, insight, children }: {
-    title: string; subtitle?: string; insight?: string; children: React.ReactNode
+function SectionCard({ title, subtitle, insight, timePeriod, children }: {
+    title: string; subtitle?: string; insight?: string; timePeriod?: string; children: React.ReactNode
 }) {
     return (
         <div className="card" style={{ marginBottom: 20 }}>
-            <div className="card-header" style={{ marginBottom: 16 }}>
+            <div className="card-header" style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                 <div>
                     <h3 style={{ fontSize: 15, fontWeight: 600 }}>{title}</h3>
                     {subtitle && <p className="text-muted" style={{ fontSize: 12, marginTop: 2 }}>{subtitle}</p>}
                 </div>
+                {timePeriod && (
+                    <span style={{
+                        padding: '4px 10px',
+                        background: 'var(--background)',
+                        borderRadius: 6,
+                        fontSize: 11,
+                        color: 'var(--muted)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 4
+                    }}>
+                        <Clock size={12} />
+                        {timePeriod}
+                    </span>
+                )}
             </div>
             {children}
             {insight && (
@@ -88,6 +103,7 @@ function SectionCard({ title, subtitle, insight, children }: {
         </div>
     );
 }
+
 
 function ScoreGauge({ score, label, maxScore = 100 }: { score: number; label: string; maxScore?: number }) {
     const percentage = Math.min((score / maxScore) * 100, 100);
@@ -375,14 +391,21 @@ export default function ContentIntelligencePage() {
             {/* Content Quality Score Summary */}
             <SectionCard
                 title="Content Quality Score"
-                subtitle="Overall health of your content"
+                subtitle="Overall health of your content — based on engagement, reach, and save rates"
+                timePeriod={`${data?.contentQuality?.postsAnalyzed || 0} posts analyzed`}
             >
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: 24, alignItems: 'center' }}>
-                    <ScoreGauge score={contentQuality.averageScore || 0} label="Average Quality Score" />
+                    <div>
+                        <ScoreGauge score={contentQuality.averageScore || 0} label="Average Quality Score" />
+                        <div style={{ marginTop: 12, padding: '10px 12px', background: 'rgba(99, 102, 241, 0.1)', borderRadius: 6, fontSize: 11, textAlign: 'center' }}>
+                            <strong>Score Formula:</strong> Engagement Rate + Save Rate + Reach Factor
+                        </div>
+                    </div>
 
                     <div>
-                        <div style={{ marginBottom: 16 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 16 }}>
                             <span className="text-muted" style={{ fontSize: 12 }}>Quality Distribution</span>
+                            <InfoTooltip text="Posts are graded: Excellent (70+), Good (50-69), Average (30-49), Poor (below 30). Scores are calculated relative to YOUR average performance, not industry benchmarks." />
                         </div>
                         <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
                             {qualityPieData.map((item, i) => (

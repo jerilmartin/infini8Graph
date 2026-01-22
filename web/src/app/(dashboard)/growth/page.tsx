@@ -49,14 +49,27 @@ function InfoTooltip({ text }: { text: string }) {
 
 // ==================== SECTION CARD ====================
 
-function SectionCard({ title, subtitle, children }: { title: string; subtitle?: string; children: React.ReactNode }) {
+function SectionCard({ title, subtitle, timePeriod, children }: {
+    title: string; subtitle?: string; timePeriod?: string; children: React.ReactNode
+}) {
     return (
         <div className="card" style={{ marginBottom: 20 }}>
-            <div className="card-header" style={{ marginBottom: 16 }}>
+            <div className="card-header" style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                 <div>
                     <h3 style={{ fontSize: 15, fontWeight: 600 }}>{title}</h3>
                     {subtitle && <p className="text-muted" style={{ fontSize: 12, marginTop: 2 }}>{subtitle}</p>}
                 </div>
+                {timePeriod && (
+                    <span style={{
+                        padding: '4px 10px',
+                        background: 'var(--background)',
+                        borderRadius: 6,
+                        fontSize: 11,
+                        color: 'var(--muted)'
+                    }}>
+                        {timePeriod}
+                    </span>
+                )}
             </div>
             {children}
         </div>
@@ -65,8 +78,8 @@ function SectionCard({ title, subtitle, children }: { title: string; subtitle?: 
 
 // ==================== METRIC CARD ====================
 
-function MetricCard({ label, value, icon: Icon, color, tooltip, trend }: {
-    label: string; value: string | number; icon: React.ElementType; color: string; tooltip?: string; trend?: number;
+function MetricCard({ label, value, icon: Icon, color, tooltip, trend, trendLabel }: {
+    label: string; value: string | number; icon: React.ElementType; color: string; tooltip?: string; trend?: number; trendLabel?: string;
 }) {
     return (
         <div className="metric-card" style={{ padding: 16 }}>
@@ -86,7 +99,7 @@ function MetricCard({ label, value, icon: Icon, color, tooltip, trend }: {
                         <TrendingDown size={14} style={{ color: '#ef4444' }} />
                     )}
                     <span style={{ fontSize: 12, fontWeight: 500, color: trend >= 0 ? '#10b981' : '#ef4444' }}>
-                        {Math.abs(trend)}%
+                        {trend >= 0 ? '+' : ''}{trend}% {trendLabel && <span style={{ fontWeight: 400, opacity: 0.7 }}>{trendLabel}</span>}
                     </span>
                 </div>
             )}
