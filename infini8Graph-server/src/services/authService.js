@@ -20,11 +20,14 @@ export function getLoginUrl() {
     const scopes = [
         'instagram_basic',
         'instagram_manage_insights',
+        'instagram_manage_comments',   // For comment auto-reply
+        'instagram_manage_messages',   // For DM auto-reply
         'pages_show_list',
         'pages_read_engagement',
+        'pages_manage_metadata',       // Required for webhooks
         'business_management',
-        'ads_read',           // For ad account insights
-        'read_insights'       // For page/app insights
+        'ads_read',                    // For ad account insights
+        'read_insights'                // For page/app insights
     ].join(',');
 
     const params = new URLSearchParams({

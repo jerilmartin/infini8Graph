@@ -98,12 +98,34 @@ class AnalyticsService {
         const cached = await this.checkCache('overview');
         if (cached) return cached;
 
-        // Fetch fresh data including demographics
-        const [profile, media, demographics] = await Promise.all([
-            this.instagram.getProfile(),
-            this.instagram.getAllMediaWithInsights(30),
-            this.instagram.getFollowerDemographics()
-        ]);
+        // Fetch profile first (most basic permission)
+        let profile;
+        try {
+            profile = await this.instagram.getProfile();
+            console.log('✅ Profile fetched successfully for:', profile.username);
+        } catch (profileError) {
+            console.error('❌ Failed to fetch profile:', profileError.message);
+            throw new Error('Cannot fetch Instagram profile. Please re-authenticate with the required permissions.');
+        }
+
+        // Fetch media and demographics with graceful fallback
+        let media = [];
+        let demographics = {};
+
+        try {
+            media = await this.instagram.getAllMediaWithInsights(30);
+            console.log('✅ Media fetched successfully:', media.length, 'posts');
+        } catch (mediaError) {
+            console.warn('⚠️ Media fetch failed (permission issue?):', mediaError.message);
+            console.warn('⚠️ Continuing with basic profile data only...');
+        }
+
+        try {
+            demographics = await this.instagram.getFollowerDemographics();
+            console.log('✅ Demographics fetched successfully');
+        } catch (demoError) {
+            console.warn('⚠️ Demographics fetch failed (permission issue?):', demoError.message);
+        }
 
         // Calculate engagement rate
         const totalEngagement = media.reduce((sum, post) => sum + post.engagement, 0);

@@ -8,11 +8,12 @@ import dotenv from 'dotenv';
 import authRoutes from './routes/auth.js';
 import instagramRoutes from './routes/instagram.js';
 import adsRoutes from './routes/ads.js';
+import webhookRoutes from './routes/webhook.js';
 
 dotenv.config();
 
 const app = express();
-const PORT = process.env.PORT || 3005; // Force NEW PORT 3005
+const PORT = process.env.PORT || 3005;
 
 console.log('🚀 SERVER STARTING IN:', process.cwd());
 console.log('🚀 SERVER FILE:', import.meta.url);
@@ -52,6 +53,7 @@ app.get('/test-live-code', (req, res) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/instagram', instagramRoutes);
 app.use('/api/ads', adsRoutes);
+app.use('/api/webhook', webhookRoutes);
 
 // Error handler
 app.use((err, req, res, next) => {
