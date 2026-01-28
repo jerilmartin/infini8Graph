@@ -9,14 +9,22 @@ import authRoutes from './routes/auth.js';
 import instagramRoutes from './routes/instagram.js';
 import adsRoutes from './routes/ads.js';
 import webhookRoutes from './routes/webhook.js';
+import automationRoutes from './routes/automationRoutes.js';
 
 dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 3005;
 
+// Trust proxy for ngrok/load balancers
+app.set('trust proxy', 1);
+
 console.log('🚀 SERVER STARTING IN:', process.cwd());
-console.log('🚀 SERVER FILE:', import.meta.url);
+// Global Request Logger (Super Debug)
+app.use((req, res, next) => {
+    console.log(`📡 [${new Date().toLocaleTimeString()}] ${req.method} ${req.originalUrl}`);
+    next();
+});
 
 // Security middleware
 app.use(helmet());
@@ -54,6 +62,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/instagram', instagramRoutes);
 app.use('/api/ads', adsRoutes);
 app.use('/api/webhook', webhookRoutes);
+app.use('/api/automation', automationRoutes);
 
 // Error handler
 app.use((err, req, res, next) => {

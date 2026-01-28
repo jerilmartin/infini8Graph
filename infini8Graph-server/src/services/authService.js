@@ -98,7 +98,7 @@ export async function getInstagramBusinessAccount(accessToken) {
         const pagesResponse = await axios.get(`${GRAPH_API_BASE}/me/accounts`, {
             params: {
                 access_token: accessToken,
-                fields: 'id,name,instagram_business_account'
+                fields: 'id,name,access_token,instagram_business_account'
             }
         });
 
@@ -134,7 +134,9 @@ export async function getInstagramBusinessAccount(accessToken) {
             followsCount: instagramResponse.data.follows_count,
             mediaCount: instagramResponse.data.media_count,
             biography: instagramResponse.data.biography,
-            website: instagramResponse.data.website
+            website: instagramResponse.data.website,
+            pageId: pageWithInstagram.id, // Facebook Page ID - needed for messaging API
+            pageToken: pageWithInstagram.access_token // Save the Page Access Token for messaging
         };
     } catch (error) {
         console.error('Instagram account fetch error:', error.response?.data || error.message);
@@ -216,6 +218,7 @@ export async function createOrUpdateUser(instagramData, accessToken, expiresIn) 
                     media_count: instagramData.mediaCount,
                     biography: instagramData.biography,
                     website: instagramData.website,
+                    facebook_page_id: instagramData.pageId, // Store Page ID for messaging
                     is_active: true,
                     updated_at: new Date().toISOString()
                 })
@@ -234,6 +237,7 @@ export async function createOrUpdateUser(instagramData, accessToken, expiresIn) 
                     media_count: instagramData.mediaCount,
                     biography: instagramData.biography,
                     website: instagramData.website,
+                    facebook_page_id: instagramData.pageId, // Store Page ID for messaging
                     is_active: true
                 })
                 .select('id')

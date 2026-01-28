@@ -61,13 +61,24 @@ class AutoReplyService {
             },
             {
                 keywords: ['price', 'cost', 'how much', 'rate'],
-                reply: 'Thanks for your interest! 💰 Please DM us for pricing details.',
-                priority: 2
+                reply: 'Thanks for your interest! 💰 Check your DMs! 📩',
+                dmReply: 'Hey! 👋 Thanks for asking about pricing!\n\n💰 Here are our rates:\n• Basic Package: $99\n• Premium Package: $199\n• Enterprise: Custom pricing\n\nLet me know if you have any questions!',
+                priority: 2,
+                sendDM: true // Flag to also send a DM
             },
             {
                 keywords: ['where', 'location', 'address', 'shop'],
-                reply: 'Check our bio for location details! 📍 Feel free to DM us for more info.',
-                priority: 2
+                reply: 'Check your DMs for location details! 📍📩',
+                dmReply: 'Hey! 👋 Here are our location details:\n\n📍 Address: 123 Main Street, City\n⏰ Hours: Mon-Sat 9AM-6PM\n📞 Phone: +1-234-567-8900\n\nLooking forward to seeing you!',
+                priority: 2,
+                sendDM: true
+            },
+            {
+                keywords: ['info', 'information', 'details', 'interested'],
+                reply: 'Thanks for your interest! Check your DMs 📩',
+                dmReply: 'Hey! 👋 Thanks for your interest!\n\nI\'d love to help you learn more. Could you tell me:\n• What product/service interests you?\n• Any specific questions?\n\nI\'ll get back to you right away!',
+                priority: 2,
+                sendDM: true
             }
         ];
     }
@@ -76,11 +87,16 @@ class AutoReplyService {
      * Get access token for a user by Instagram account ID
      */
     async getAccessTokenByInstagramId(instagramUserId) {
+        if (instagramUserId === '0') {
+            console.log('🧪 Meta Dashboard Test detected (ID: 0). Use a real account for live testing.');
+            return null;
+        }
+
         try {
-            // First find the instagram account
+            // First find the instagram account (include facebook_page_id for messaging)
             const { data: account, error: accountError } = await supabase
                 .from('instagram_accounts')
-                .select('id, user_id')
+                .select('id, user_id, facebook_page_id')
                 .eq('instagram_user_id', instagramUserId)
                 .single();
 
@@ -107,13 +123,92 @@ class AutoReplyService {
                 return null;
             }
 
+            const decryptedToken = decrypt(tokenData.access_token);
+            console.log(`🔑 Token retrieved, first 20 chars: ${decryptedToken?.substring(0, 20)}...`);
+            console.log(`🔑 Token length: ${decryptedToken?.length}`);
+            console.log(`📄 Facebook Page ID: ${account.facebook_page_id}`);
+
             return {
-                accessToken: decrypt(tokenData.access_token),
+                accessToken: decryptedToken,
                 instagramAccountId: account.id,
-                userId: account.user_id
+                userId: account.user_id,
+                facebookPageId: account.facebook_page_id
             };
         } catch (error) {
             console.error('❌ Error getting access token:', error);
+            return null;
+        }
+    }
+
+    /**
+     * Fetch automation rules from database
+     * @param {string} instagramAccountId - The internal DB ID of the Instagram account
+     * @param {string|null} mediaId - Optional media ID for post-specific rules
+     */
+    /**
+     * Fetch automation rules from database
+     * @param {string} instagramAccountId - The internal DB ID of the Instagram account
+     * @param {string|null} currentMediaId - The media ID of the current post being commented on
+     */
+    async getAutomationRules(instagramAccountId, currentMediaId = null) {
+        try {
+            // Fetch ALL active rules for this account
+            const { data: allRules, error } = await supabase
+                .from('automation_rules')
+                .select('*')
+                .eq('instagram_account_id', instagramAccountId)
+                .eq('is_active', true);
+
+            if (error || !allRules || allRules.length === 0) {
+                console.log('📋 No user-defined rules found, using defaults');
+                return null;
+            }
+
+            // Filter for matching rules
+            const applicableRules = allRules.filter(rule => {
+                // 1. General Rule (Application to all posts)
+                if (!rule.media_id && (!rule.media_ids || rule.media_ids.length === 0)) {
+                    return true;
+                }
+
+                // 2. Specific Post Rule (Single ID)
+                if (rule.media_id === currentMediaId) {
+                    return true;
+                }
+
+                // 3. Specific Post Rule (Multiple IDs)
+                if (rule.media_ids && Array.isArray(rule.media_ids) && rule.media_ids.includes(currentMediaId)) {
+                    return true;
+                }
+
+                return false;
+            });
+
+            if (applicableRules.length === 0) return null;
+
+            // Sort by specificity (Specific posts > General)
+            applicableRules.sort((a, b) => {
+                const aIsSpecific = a.media_id || (a.media_ids && a.media_ids.length > 0);
+                const bIsSpecific = b.media_id || (b.media_ids && b.media_ids.length > 0);
+                if (aIsSpecific && !bIsSpecific) return -1; // a comes first
+                if (!aIsSpecific && bIsSpecific) return 1;  // b comes first
+                return 0;
+            });
+
+            console.log(`📋 Found ${applicableRules.length} matching rule(s) for media ${currentMediaId || 'unknown'}`);
+
+            return applicableRules.map(r => ({
+                keywords: r.keywords,
+                reply: r.comment_reply,
+                dmReply: r.dm_reply,
+                sendDM: r.send_dm,
+                // Assign priority: 1 for specific, 2 for general
+                priority: (r.media_id || (r.media_ids && r.media_ids.length > 0)) ? 1 : 2,
+                name: r.name
+            }));
+
+        } catch (error) {
+            console.error('❌ Error fetching automation rules:', error);
             return null;
         }
     }
@@ -144,6 +239,8 @@ class AutoReplyService {
 
     /**
      * Find matching rule for text
+     * Rules with empty keywords array match ALL text (default/fallback behavior)
+     * Rules with keywords only match if a keyword is found in text
      */
     findMatchingRule(text, rules) {
         if (!text) return null;
@@ -151,16 +248,26 @@ class AutoReplyService {
         const lowerText = text.toLowerCase();
 
         // Sort by priority (lower = higher priority)
+        // Priority 1 = specific post rules, Priority 2 = general rules
         const sortedRules = [...rules].sort((a, b) => a.priority - b.priority);
 
         for (const rule of sortedRules) {
+            // If rule has no keywords or empty keywords array, it matches EVERYTHING (default behavior)
+            if (!rule.keywords || rule.keywords.length === 0) {
+                console.log(`🎯 Rule "${rule.name || 'default'}" has no keywords - matches all comments`);
+                return rule;
+            }
+
+            // Otherwise, check if any keyword matches
             for (const keyword of rule.keywords) {
                 if (lowerText.includes(keyword.toLowerCase())) {
+                    console.log(`🎯 Keyword "${keyword}" matched in: "${text.substring(0, 50)}..."`);
                     return rule;
                 }
             }
         }
 
+        console.log(`📭 No rule matched for text: "${text.substring(0, 50)}..."`);
         return null;
     }
 
@@ -204,10 +311,11 @@ class AutoReplyService {
                 return;
             }
 
-            // Check cooldown
-            if (!this.shouldReply(senderId, 'message')) {
-                return;
-            }
+            // Check cooldown - TEMPORARILY DISABLED FOR TESTING
+            // TODO: Uncomment when going to production
+            // if (!this.shouldReply(senderId, 'message')) {
+            //     return;
+            // }
 
             // Find matching rule
             const rule = this.findMatchingRule(message.text, this.messageRules);
@@ -216,8 +324,8 @@ class AutoReplyService {
                 return;
             }
 
-            // Send reply
-            await this.sendMessageReply(recipientId, senderId, rule.reply, tokenData.accessToken);
+            // Send reply using Facebook Page ID for Instagram messaging
+            await this.sendMessageReply(tokenData.facebookPageId, senderId, rule.reply, tokenData.accessToken);
             this.markReplied(senderId, 'message');
 
             // Log the reply
@@ -236,19 +344,36 @@ class AutoReplyService {
     }
 
     /**
-     * Send a DM reply
+     * Send a DM reply via Facebook Graph API for Instagram
+     * @param {string} facebookPageId - The Facebook Page ID linked to the Instagram account
+     * @param {string} recipientIGSID - The Instagram-scoped User ID of the recipient
+     * @param {string} text - The message text to send
+     * @param {string} accessToken - The Page Access Token
      */
-    async sendMessageReply(instagramUserId, recipientIGSID, text, accessToken) {
+    async sendMessageReply(facebookPageId, recipientIGSID, text, accessToken) {
         try {
+            console.log(`📤 Attempting to send DM to ${recipientIGSID}`);
+            console.log(`📄 Using Facebook Page ID: ${facebookPageId}`);
+            console.log(`🔑 Using token: ${accessToken?.substring(0, 25)}...`);
+
+            if (!facebookPageId) {
+                throw new Error('Facebook Page ID is required for Instagram messaging. Please re-login to update your account data.');
+            }
+
+            // Use Facebook Graph API with platform=instagram for Instagram DMs
+            // Per Meta docs: POST /{page-id}/messages?platform=instagram
             const response = await axios.post(
-                `${INSTAGRAM_GRAPH_API}/${instagramUserId}/messages`,
+                `${FACEBOOK_GRAPH_API}/${facebookPageId}/messages`,
                 {
                     recipient: { id: recipientIGSID },
                     message: { text }
                 },
                 {
+                    params: {
+                        platform: 'instagram',
+                        access_token: accessToken
+                    },
                     headers: {
-                        'Authorization': `Bearer ${accessToken}`,
                         'Content-Type': 'application/json'
                     }
                 }
@@ -273,7 +398,8 @@ class AutoReplyService {
                 if (change.field !== 'comments') continue;
 
                 const { value } = change;
-                const { from, comment_id, text, media } = value;
+                // Note: webhook sends 'id' for comment ID, not 'comment_id'
+                const { from, id: commentId, text, media } = value;
 
                 console.log(`📢 Processing comment from ${from?.username} on media ${media?.id}`);
                 console.log(`📝 Comment text: "${text}"`);
@@ -291,31 +417,69 @@ class AutoReplyService {
                     continue;
                 }
 
-                // Check cooldown
-                if (!this.shouldReply(from?.id, 'comment')) {
-                    continue;
+                // Check cooldown - TEMPORARILY DISABLED FOR TESTING
+                // TODO: Uncomment when going to production
+                // if (!this.shouldReply(from?.id, 'comment')) {
+                //     continue;
+                // }
+
+                // Try to get user-defined rules from database (check for post-specific rules first)
+                const mediaId = media?.id;
+                let rules = await this.getAutomationRules(tokenData.instagramAccountId, mediaId);
+
+                // Fall back to default hardcoded rules if no user-defined rules
+                if (!rules || rules.length === 0) {
+                    rules = this.commentRules;
+                    console.log('📋 Using default hardcoded rules');
                 }
 
                 // Find matching rule
-                const rule = this.findMatchingRule(text, this.commentRules);
+                const rule = this.findMatchingRule(text, rules);
                 if (!rule) {
                     console.log('📭 No matching rule for comment');
                     continue;
                 }
 
-                // Send reply
-                await this.sendCommentReply(comment_id, rule.reply, tokenData.accessToken);
+                console.log(`🎯 Matched rule: ${rule.name || 'default'}`);
+
+                // Send comment reply
+                console.log(`📨 Sending reply to comment ID: ${commentId}`);
+                await this.sendCommentReply(commentId, rule.reply, tokenData.accessToken);
                 this.markReplied(from?.id, 'comment');
+
+                // Also send DM if rule has sendDM flag and dmReply content
+                if (rule.sendDM && rule.dmReply && from?.id) {
+                    console.log(`📩 Also sending DM to commenter: ${from?.username} (ID: ${from?.id})`);
+                    try {
+                        // Need to check if we have the Facebook Page ID for DM
+                        if (tokenData.facebookPageId) {
+                            await this.sendMessageReply(
+                                tokenData.facebookPageId,
+                                from.id,  // Commenter's IGSID
+                                rule.dmReply,
+                                tokenData.accessToken
+                            );
+                            console.log(`✅ DM sent to commenter ${from?.username}`);
+                        } else {
+                            console.warn('⚠️ Cannot send DM - Facebook Page ID not available. User needs to re-login.');
+                        }
+                    } catch (dmError) {
+                        // DM might fail if user hasn't messaged us before (24-hour rule)
+                        // Don't let this fail the whole process
+                        console.warn(`⚠️ Could not send DM to ${from?.username}:`, dmError.response?.data?.error?.message || dmError.message);
+                    }
+                }
 
                 // Log the reply
                 await this.logReply({
                     type: 'comment',
                     senderId: from?.id,
                     senderUsername: from?.username,
-                    commentId: comment_id,
+                    commentId: commentId,
                     mediaId: media?.id,
                     originalText: text,
                     replyText: rule.reply,
+                    dmSent: rule.sendDM ? true : false,
                     instagramAccountId: tokenData.instagramAccountId
                 });
             }
@@ -329,13 +493,16 @@ class AutoReplyService {
      */
     async sendCommentReply(commentId, text, accessToken) {
         try {
+            console.log(`📤 Attempting to reply to comment ${commentId}`);
+
+            // Use Facebook Graph API for Instagram Business account comment replies
             const response = await axios.post(
-                `${INSTAGRAM_GRAPH_API}/${commentId}/replies`,
-                { message: text },
+                `${FACEBOOK_GRAPH_API}/${commentId}/replies`,
+                null,
                 {
-                    headers: {
-                        'Authorization': `Bearer ${accessToken}`,
-                        'Content-Type': 'application/json'
+                    params: {
+                        message: text,
+                        access_token: accessToken
                     }
                 }
             );

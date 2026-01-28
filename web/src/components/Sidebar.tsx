@@ -19,7 +19,8 @@ import {
     X,
     Megaphone,
     Instagram,
-    Lightbulb
+    Lightbulb,
+    Bot
 } from 'lucide-react';
 
 const navSections = [
@@ -39,6 +40,12 @@ const navSections = [
         title: 'Advertising',
         items: [
             { href: '/ads', icon: Megaphone, label: 'Ads' },
+        ]
+    },
+    {
+        title: 'Automation',
+        items: [
+            { href: '/automation', icon: Bot, label: 'Auto-Reply' },
         ]
     },
     {
