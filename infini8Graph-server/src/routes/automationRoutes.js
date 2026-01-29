@@ -10,8 +10,21 @@ const router = express.Router();
 router.get('/rules', authenticate, async (req, res) => {
     try {
         const userId = req.user.userId;
+        const activeAccountId = req.user.instagramAccountId;
 
-        // Get user's Instagram accounts
+        // If an active account is selected, only show rules for that account
+        if (activeAccountId) {
+            const { data: rules, error: rulesError } = await supabase
+                .from('automation_rules')
+                .select('*')
+                .eq('instagram_account_id', activeAccountId)
+                .order('created_at', { ascending: false });
+
+            if (rulesError) throw rulesError;
+            return res.json({ success: true, rules: rules || [] });
+        }
+
+        // Get user's Instagram accounts (fallback)
         const { data: accounts, error: accountError } = await supabase
             .from('instagram_accounts')
             .select('id')
@@ -43,6 +56,7 @@ router.get('/rules', authenticate, async (req, res) => {
 router.post('/rules', authenticate, async (req, res) => {
     try {
         const userId = req.user.userId;
+        const activeAccountId = req.user.instagramAccountId;
         const { name, keywords, comment_reply, dm_reply, send_dm, is_active, media_id, media_ids } = req.body;
 
         // Validate required fields (keywords optional for default rules)
@@ -53,18 +67,10 @@ router.post('/rules', authenticate, async (req, res) => {
             });
         }
 
-        // Get user's primary Instagram account
-        const { data: account, error: accountError } = await supabase
-            .from('instagram_accounts')
-            .select('id')
-            .eq('user_id', userId)
-            .eq('is_active', true)
-            .single();
-
-        if (accountError || !account) {
+        if (!activeAccountId) {
             return res.status(400).json({
                 success: false,
-                error: 'No active Instagram account found'
+                error: 'No active Instagram account selected'
             });
         }
 
@@ -72,7 +78,7 @@ router.post('/rules', authenticate, async (req, res) => {
         const { data: rule, error: createError } = await supabase
             .from('automation_rules')
             .insert({
-                instagram_account_id: account.id,
+                instagram_account_id: activeAccountId,
                 name,
                 keywords,
                 comment_reply,

@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
@@ -14,13 +15,16 @@ import {
     Settings,
     LogOut,
     ChevronLeft,
-    ChevronRight,
     Menu,
     X,
     Megaphone,
     Instagram,
     Lightbulb,
-    Bot
+    Bot,
+    ChevronDown,
+    Check,
+    Plus,
+    Globe
 } from 'lucide-react';
 
 const navSections = [
@@ -28,6 +32,7 @@ const navSections = [
         title: 'Analytics',
         items: [
             { href: '/dashboard', icon: LayoutDashboard, label: 'Overview' },
+            { href: '/unified', icon: Globe, label: 'Unified' },
             { href: '/growth', icon: TrendingUp, label: 'Growth' },
             { href: '/engagement', icon: Heart, label: 'Engagement' },
             { href: '/reels', icon: Film, label: 'Reels' },
@@ -64,7 +69,24 @@ interface SidebarProps {
 
 export default function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
     const pathname = usePathname();
-    const { user, logout } = useAuth();
+    const { user, logout, accounts, activeAccountId, switchAccount, login } = useAuth();
+    const [accountDropdownOpen, setAccountDropdownOpen] = useState(false);
+    const [switching, setSwitching] = useState(false);
+
+    const activeAccount = accounts.find(a => a.id === activeAccountId) || accounts.find(a => a.is_active);
+
+    const handleSwitchAccount = async (accountId: string) => {
+        if (accountId === activeAccountId || switching) return;
+        setSwitching(true);
+        await switchAccount(accountId);
+        setAccountDropdownOpen(false);
+        setSwitching(false);
+    };
+
+    const handleAddAccount = () => {
+        // Redirect to login to add another account
+        login();
+    };
 
     return (
         <>
@@ -123,22 +145,187 @@ export default function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
                     </button>
                 </div>
 
-                {/* Account Info */}
+                {/* Account Switcher */}
                 {!isCollapsed && (
-                    <div style={{ padding: '12px 12px 0' }}>
-                        <div className="account-card">
+                    <div style={{ padding: '12px 12px 0', position: 'relative' }}>
+                        <button
+                            onClick={() => setAccountDropdownOpen(!accountDropdownOpen)}
+                            className="account-card"
+                            style={{
+                                width: '100%',
+                                border: 'none',
+                                cursor: 'pointer',
+                                textAlign: 'left',
+                                transition: 'background 0.15s ease'
+                            }}
+                            onMouseOver={(e) => e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)'}
+                            onMouseOut={(e) => e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)'}
+                        >
                             <div className="account-avatar">
-                                <Instagram size={16} />
+                                {activeAccount?.profile_picture_url ? (
+                                    <img
+                                        src={activeAccount.profile_picture_url}
+                                        alt=""
+                                        style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }}
+                                    />
+                                ) : (
+                                    <Instagram size={16} />
+                                )}
                             </div>
                             <div style={{ flex: 1, minWidth: 0 }}>
-                                <div style={{ fontSize: 13, fontWeight: 500, color: 'white', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                    @{user?.username || 'User'}
+                                <div style={{ fontSize: 13, fontWeight: 500, color: 'white', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 6 }}>
+                                    @{activeAccount?.username || user?.username || 'User'}
                                 </div>
-                                <div style={{ fontSize: 11, color: 'var(--sidebar-muted)' }}>
-                                    Instagram Business
+                                <div style={{ fontSize: 10, color: 'var(--sidebar-active)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', marginTop: 1 }}>
+                                    {accounts.length > 1 ? 'Click to Switch • Active' : 'Instagram Business'}
                                 </div>
                             </div>
-                        </div>
+                            <ChevronDown
+                                size={16}
+                                style={{
+                                    color: 'var(--sidebar-muted)',
+                                    transform: accountDropdownOpen ? 'rotate(180deg)' : 'none',
+                                    transition: 'transform 0.2s'
+                                }}
+                            />
+                        </button>
+
+                        {/* Dropdown */}
+                        {accountDropdownOpen && (
+                            <div
+                                style={{
+                                    position: 'absolute',
+                                    top: '100%',
+                                    left: 12,
+                                    right: 12,
+                                    marginTop: 4,
+                                    background: 'var(--color-gray-800)',
+                                    border: '1px solid var(--sidebar-border)',
+                                    borderRadius: 'var(--radius-lg)',
+                                    padding: 'var(--space-2)',
+                                    zIndex: 100,
+                                    boxShadow: '0 10px 25px rgba(0,0,0,0.3)'
+                                }}
+                            >
+                                <div style={{ fontSize: 11, color: 'var(--sidebar-muted)', padding: '6px 10px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                                    Switch Account
+                                </div>
+
+                                {accounts.map(account => (
+                                    <button
+                                        key={account.id}
+                                        onClick={() => handleSwitchAccount(account.id)}
+                                        disabled={switching}
+                                        style={{
+                                            width: '100%',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: 10,
+                                            padding: '10px',
+                                            background: account.id === activeAccountId ? 'rgba(99, 102, 241, 0.2)' : 'transparent',
+                                            border: 'none',
+                                            borderRadius: 'var(--radius-md)',
+                                            cursor: switching ? 'wait' : 'pointer',
+                                            textAlign: 'left',
+                                            transition: 'background 0.15s ease',
+                                            opacity: switching ? 0.6 : 1
+                                        }}
+                                        onMouseOver={(e) => {
+                                            if (account.id !== activeAccountId)
+                                                e.currentTarget.style.background = 'var(--sidebar-hover)'
+                                        }}
+                                        onMouseOut={(e) => {
+                                            if (account.id !== activeAccountId)
+                                                e.currentTarget.style.background = 'transparent'
+                                        }}
+                                    >
+                                        <div
+                                            style={{
+                                                width: 32,
+                                                height: 32,
+                                                borderRadius: '50%',
+                                                background: account.profile_picture_url ? 'transparent' : 'linear-gradient(135deg, #ec4899, #f97316)',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'center',
+                                                flexShrink: 0,
+                                                overflow: 'hidden'
+                                            }}
+                                        >
+                                            {account.profile_picture_url ? (
+                                                <img
+                                                    src={account.profile_picture_url}
+                                                    alt=""
+                                                    style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                                                />
+                                            ) : (
+                                                <span style={{ color: 'white', fontWeight: 600, fontSize: 12 }}>
+                                                    {account.username?.[0]?.toUpperCase() || '?'}
+                                                </span>
+                                            )}
+                                        </div>
+                                        <div style={{ flex: 1, minWidth: 0 }}>
+                                            <div style={{
+                                                fontSize: 13,
+                                                fontWeight: 500,
+                                                color: 'white',
+                                                overflow: 'hidden',
+                                                textOverflow: 'ellipsis',
+                                                whiteSpace: 'nowrap'
+                                            }}>
+                                                @{account.username}
+                                            </div>
+                                            <div style={{ fontSize: 11, color: 'var(--sidebar-muted)' }}>
+                                                {account.followers_count ? `${account.followers_count.toLocaleString()} followers` : 'Instagram'}
+                                            </div>
+                                        </div>
+                                        {account.id === activeAccountId && (
+                                            <Check size={16} style={{ color: '#6366f1' }} />
+                                        )}
+                                    </button>
+                                ))}
+
+                                {/* Add Account Button */}
+                                <button
+                                    onClick={handleAddAccount}
+                                    style={{
+                                        width: '100%',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: 10,
+                                        padding: '10px',
+                                        background: 'transparent',
+                                        border: 'none',
+                                        borderRadius: 'var(--radius-md)',
+                                        cursor: 'pointer',
+                                        textAlign: 'left',
+                                        marginTop: 4,
+                                        borderTop: '1px solid var(--sidebar-border)',
+                                        paddingTop: 14
+                                    }}
+                                    onMouseOver={(e) => e.currentTarget.style.background = 'var(--sidebar-hover)'}
+                                    onMouseOut={(e) => e.currentTarget.style.background = 'transparent'}
+                                >
+                                    <div
+                                        style={{
+                                            width: 32,
+                                            height: 32,
+                                            borderRadius: '50%',
+                                            background: 'var(--sidebar-hover)',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            border: '2px dashed var(--sidebar-muted)'
+                                        }}
+                                    >
+                                        <Plus size={14} style={{ color: 'var(--sidebar-muted)' }} />
+                                    </div>
+                                    <span style={{ fontSize: 13, color: 'var(--sidebar-muted)', fontWeight: 500 }}>
+                                        Add another account
+                                    </span>
+                                </button>
+                            </div>
+                        )}
                     </div>
                 )}
 
@@ -186,6 +373,14 @@ export default function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
                     </button>
                 </div>
             </aside>
+
+            {/* Click outside to close dropdown */}
+            {accountDropdownOpen && (
+                <div
+                    style={{ position: 'fixed', inset: 0, zIndex: 49 }}
+                    onClick={() => setAccountDropdownOpen(false)}
+                />
+            )}
         </>
     );
 }

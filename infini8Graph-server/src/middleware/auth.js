@@ -58,6 +58,7 @@ export function authenticate(req, res, next) {
         req.user = {
             userId: decoded.userId,
             instagramUserId: decoded.instagramUserId,
+            instagramAccountId: decoded.instagramAccountId,
             username: decoded.username
         };
 
@@ -93,6 +94,7 @@ export function optionalAuth(req, res, next) {
                 req.user = {
                     userId: decoded.userId,
                     instagramUserId: decoded.instagramUserId,
+                    instagramAccountId: decoded.instagramAccountId,
                     username: decoded.username
                 };
             }

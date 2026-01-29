@@ -93,19 +93,47 @@ function InfoTooltip({ text }: { text: string }) {
 
 // ==================== METRIC CARDS ====================
 
-function MetricCard({ label, value, icon: Icon, color, tooltip }: {
-    label: string; value: string | number; icon: React.ElementType; color: string; tooltip?: string;
+function MetricCard({ label, value, icon: Icon, trend, trendLabel, color, tooltip }: {
+    label: string;
+    value: string | number;
+    icon: React.ElementType;
+    trend?: number;
+    trendLabel?: string;
+    color: string;
+    tooltip?: string;
 }) {
     return (
         <div className="metric-card" style={{ padding: 16 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
                 <div className="metric-icon" style={{ background: `${color}15`, color, width: 36, height: 36 }}>
                     <Icon size={18} />
                 </div>
                 {tooltip && <InfoTooltip text={tooltip} />}
             </div>
-            <div className="metric-value" style={{ fontSize: 22, color }}>{value}</div>
-            <div className="metric-label" style={{ fontSize: 12 }}>{label}</div>
+            <div className="metric-value" style={{ fontSize: 22, color, marginBottom: 4 }}>{value}</div>
+            <div className="metric-label" style={{ fontSize: 12, marginBottom: 8 }}>{label}</div>
+
+            {trend !== undefined && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 'auto' }}>
+                    {trend >= 0 ? (
+                        <TrendingUp size={14} style={{ color: '#10b981' }} />
+                    ) : (
+                        <TrendingUp size={14} style={{ color: '#ef4444', transform: 'rotate(180deg)' }} />
+                    )}
+                    <span style={{
+                        fontSize: 12,
+                        fontWeight: 600,
+                        color: trend >= 0 ? '#10b981' : '#ef4444'
+                    }}>
+                        {trend >= 0 ? '+' : ''}{trend}%
+                    </span>
+                    {trendLabel && (
+                        <span style={{ fontSize: 11, color: 'var(--muted)', marginLeft: 2 }}>
+                            {trendLabel}
+                        </span>
+                    )}
+                </div>
+            )}
         </div>
     );
 }
@@ -371,6 +399,8 @@ export default function AdsPage() {
                     value={formatCurrency(summary.spend)}
                     icon={IndianRupee}
                     color="#10b981"
+                    trend={summary.comparison?.spendTrend}
+                    trendLabel={summary.comparison?.label}
                     tooltip="Total amount spent on ads for this account"
                 />
                 <MetricCard
@@ -378,6 +408,8 @@ export default function AdsPage() {
                     value={formatNumber(summary.impressions)}
                     icon={Eye}
                     color="#0ea5e9"
+                    trend={summary.comparison?.impressionsTrend}
+                    trendLabel={summary.comparison?.label}
                     tooltip="Number of times your ads were shown on screen"
                 />
                 <MetricCard
@@ -385,6 +417,8 @@ export default function AdsPage() {
                     value={formatNumber(summary.reach)}
                     icon={Users}
                     color="#8b5cf6"
+                    trend={summary.comparison?.reachTrend}
+                    trendLabel={summary.comparison?.label}
                     tooltip="Number of unique people who saw your ads"
                 />
                 <MetricCard
@@ -392,6 +426,8 @@ export default function AdsPage() {
                     value={formatNumber(summary.clicks)}
                     icon={MousePointer}
                     color="#f59e0b"
+                    trend={summary.comparison?.clicksTrend}
+                    trendLabel={summary.comparison?.label}
                     tooltip="Number of clicks on your ads"
                 />
             </div>

@@ -19,9 +19,10 @@ const CACHE_TTL = {
  * Handles KPI calculations, caching, and data aggregation
  */
 class AnalyticsService {
-    constructor(userId, instagramUserId) {
+    constructor(userId, instagramUserId, instagramAccountId = null) {
         this.userId = userId;
         this.instagramUserId = instagramUserId;
+        this.instagramAccountId = instagramAccountId;
         this.instagram = null;
     }
 
@@ -29,7 +30,7 @@ class AnalyticsService {
      * Initialize Instagram service with access token
      */
     async initialize() {
-        const accessToken = await getAccessToken(this.userId);
+        const accessToken = await getAccessToken(this.userId, this.instagramAccountId);
         if (!accessToken) {
             throw new Error('No valid access token found. Please re-authenticate.');
         }
@@ -46,6 +47,7 @@ class AnalyticsService {
                 .from('analytics_cache')
                 .select('aggregated_data, last_fetched_at')
                 .eq('user_id', this.userId)
+                .eq('instagram_account_id', this.instagramAccountId)
                 .eq('metric_type', metricType)
                 .eq('date_range', dateRange)
                 .single();
@@ -78,12 +80,13 @@ class AnalyticsService {
                 .from('analytics_cache')
                 .upsert({
                     user_id: this.userId,
+                    instagram_account_id: this.instagramAccountId,
                     metric_type: metricType,
                     date_range: dateRange,
                     aggregated_data: data,
                     last_fetched_at: new Date().toISOString()
                 }, {
-                    onConflict: 'user_id,metric_type,date_range'
+                    onConflict: 'instagram_account_id,metric_type,date_range'
                 });
         } catch (error) {
             console.error('Cache update error:', error);

@@ -88,13 +88,13 @@ export async function exchangeCodeForToken(code) {
 }
 
 /**
- * Get Facebook Pages and linked Instagram Business Account
+ * Get all Facebook Pages and their linked Instagram Business Accounts
  * @param {string} accessToken - The Facebook access token
- * @returns {object} - Instagram account data
+ * @returns {Array} - Array of Instagram account data objects
  */
 export async function getInstagramBusinessAccount(accessToken) {
     try {
-        // Get user's Facebook Pages
+        // 1. Get user's Facebook Pages
         const pagesResponse = await axios.get(`${GRAPH_API_BASE}/me/accounts`, {
             params: {
                 access_token: accessToken,
@@ -108,39 +108,55 @@ export async function getInstagramBusinessAccount(accessToken) {
             throw new Error('No Facebook Pages found. Please connect a Facebook Page to your account.');
         }
 
-        // Find a page with Instagram Business Account
-        const pageWithInstagram = pages.find(page => page.instagram_business_account);
+        // 2. Filter pages that have a linked Instagram Business Account
+        const pagesWithInstagram = pages.filter(page => page.instagram_business_account);
 
-        if (!pageWithInstagram) {
+        if (pagesWithInstagram.length === 0) {
             throw new Error('No Instagram Business or Creator account found. Please link an Instagram Business account to your Facebook Page.');
         }
 
-        const instagramAccountId = pageWithInstagram.instagram_business_account.id;
+        console.log(`🔍 Found ${pagesWithInstagram.length} pages with Instagram accounts`);
 
-        // Get Instagram account details
-        const instagramResponse = await axios.get(`${GRAPH_API_BASE}/${instagramAccountId}`, {
-            params: {
-                access_token: accessToken,
-                fields: 'id,username,name,profile_picture_url,followers_count,follows_count,media_count,biography,website'
+        // 3. Fetch details for each Instagram account in parallel
+        const accountPromises = pagesWithInstagram.map(async (page) => {
+            try {
+                const instagramAccountId = page.instagram_business_account.id;
+                const instagramResponse = await axios.get(`${GRAPH_API_BASE}/${instagramAccountId}`, {
+                    params: {
+                        access_token: accessToken,
+                        fields: 'id,username,name,profile_picture_url,followers_count,follows_count,media_count,biography,website'
+                    }
+                });
+
+                return {
+                    instagramUserId: instagramResponse.data.id,
+                    username: instagramResponse.data.username,
+                    name: instagramResponse.data.name,
+                    profilePictureUrl: instagramResponse.data.profile_picture_url,
+                    followersCount: instagramResponse.data.followers_count,
+                    followsCount: instagramResponse.data.follows_count,
+                    mediaCount: instagramResponse.data.media_count,
+                    biography: instagramResponse.data.biography,
+                    website: instagramResponse.data.website,
+                    pageId: page.id,
+                    pageToken: page.access_token
+                };
+            } catch (err) {
+                console.error(`❌ Error fetching details for IG account ${page.instagram_business_account.id}:`, err.message);
+                return null;
             }
         });
 
-        return {
-            instagramUserId: instagramResponse.data.id,
-            username: instagramResponse.data.username,
-            name: instagramResponse.data.name,
-            profilePictureUrl: instagramResponse.data.profile_picture_url,
-            followersCount: instagramResponse.data.followers_count,
-            followsCount: instagramResponse.data.follows_count,
-            mediaCount: instagramResponse.data.media_count,
-            biography: instagramResponse.data.biography,
-            website: instagramResponse.data.website,
-            pageId: pageWithInstagram.id, // Facebook Page ID - needed for messaging API
-            pageToken: pageWithInstagram.access_token // Save the Page Access Token for messaging
-        };
+        const accounts = (await Promise.all(accountPromises)).filter(Boolean);
+
+        if (accounts.length === 0) {
+            throw new Error('Failed to fetch details for any Instagram account.');
+        }
+
+        return accounts; // Returns array [ { ...account1 }, { ...account2 } ]
     } catch (error) {
         console.error('Instagram account fetch error:', error.response?.data || error.message);
-        throw new Error(error.message || 'Failed to fetch Instagram Business Account');
+        throw new Error(error.message || 'Failed to fetch Instagram Business Accounts');
     }
 }
 
@@ -151,36 +167,54 @@ export async function getInstagramBusinessAccount(accessToken) {
  * @param {number} expiresIn - Token expiration in seconds
  * @returns {object} - User data with JWT
  */
-export async function createOrUpdateUser(instagramData, accessToken, expiresIn) {
+/**
+ * Create or update user and all their Instagram accounts
+ * @param {Array} accountsData - Array of Instagram account data objects
+ * @param {string} accessToken - The user access token to store
+ * @param {number} expiresIn - Token expiration in seconds
+ * @returns {object} - User data with JWT for the primary/first account
+ */
+export async function createOrUpdateUser(accountsData, accessToken, expiresIn) {
     try {
-        // 1. Create or Update User (Unified Identity)
-        // Check if user exists by instagram_user_id (legacy) or we might want to group by something else later
-        let { data: existingUser, error: findError } = await supabase
-            .from('users')
-            .select('id')
-            .eq('instagram_user_id', instagramData.instagramUserId)
-            .single();
+        // 0. Get Facebook User info to have a stable system-wide ID
+        const meResponse = await axios.get(`${GRAPH_API_BASE}/me`, {
+            params: {
+                access_token: accessToken,
+                fields: 'id,name'
+            }
+        });
+        const facebookUserId = meResponse.data.id;
 
-        // If not found by instagram_id, creates a new user. 
-        // Ideally we would check by email or facebook_id if available to link accounts.
+        // 1. Create or Update User (Unified Identity)
+        // Check if user exists by facebook_user_id (new) or legacy instagram_user_id
+        let { data: existingUser } = await supabase
+            .from('users')
+            .select('*')
+            .or(`facebook_user_id.eq.${facebookUserId},instagram_user_id.eq.${accountsData[0].instagramUserId}`)
+            .single();
 
         let userId;
 
         if (existingUser) {
             userId = existingUser.id;
+            // Update user details if needed
             await supabase
                 .from('users')
                 .update({
-                    username: instagramData.username,
+                    facebook_user_id: facebookUserId, // Ensure this is set
+                    name: existingUser.name || meResponse.data.name,
                     updated_at: new Date().toISOString()
                 })
                 .eq('id', userId);
         } else {
+            // Create new user
             const { data: newUser, error: createError } = await supabase
                 .from('users')
                 .insert({
-                    instagram_user_id: instagramData.instagramUserId,
-                    username: instagramData.username
+                    facebook_user_id: facebookUserId,
+                    instagram_user_id: accountsData[0].instagramUserId, // Legacy support
+                    username: accountsData[0].username,
+                    name: meResponse.data.name
                 })
                 .select('id')
                 .single();
@@ -189,142 +223,137 @@ export async function createOrUpdateUser(instagramData, accessToken, expiresIn) 
             userId = newUser.id;
         }
 
-        // 2. Create or Update Instagram Account
-        // Deactivate other accounts for this user (single active session per user for now, or just mark this as active)
+        console.log(`👤 User identified/created: ${userId} (${meResponse.data.name})`);
+
+        // 2. Process each authorized Instagram account
+        let primaryAccountId = null;
+        let primaryAccountData = accountsData[0];
+
+        // Deactivate all accounts for this user initially (we'll activate the current session ones)
         await supabase
             .from('instagram_accounts')
             .update({ is_active: false })
             .eq('user_id', userId);
 
-        let instagramAccountId;
+        for (const account of accountsData) {
+            let instagramAccountId;
+            const encryptedPageToken = account.pageToken ? encrypt(account.pageToken) : null;
 
-        const { data: existingAccount, error: accountError } = await supabase
-            .from('instagram_accounts')
-            .select('id')
-            .eq('instagram_user_id', instagramData.instagramUserId)
-            .single();
+            // Check if this specific IG account already exists
+            const { data: existingAccount } = await supabase
+                .from('instagram_accounts')
+                .select('id')
+                .eq('instagram_user_id', account.instagramUserId)
+                .maybeSingle();
 
-        if (existingAccount) {
-            instagramAccountId = existingAccount.id;
-            // Encrypt Page Token for secure storage (used for DMs)
-            const encryptedPageToken = instagramData.pageToken ? encrypt(instagramData.pageToken) : null;
+            const accountPayload = {
+                user_id: userId,
+                username: account.username,
+                name: account.name,
+                profile_picture_url: account.profilePictureUrl,
+                followers_count: account.followersCount,
+                follows_count: account.followsCount,
+                media_count: account.mediaCount,
+                biography: account.biography,
+                website: account.website,
+                facebook_page_id: account.pageId,
+                page_access_token: encryptedPageToken,
+                is_active: account === accountsData[0], // Mark the first one as active by default
+                updated_at: new Date().toISOString()
+            };
+
+            if (existingAccount) {
+                instagramAccountId = existingAccount.id;
+                await supabase
+                    .from('instagram_accounts')
+                    .update(accountPayload)
+                    .eq('id', instagramAccountId);
+            } else {
+                const { data: newAccount, error: createAccountError } = await supabase
+                    .from('instagram_accounts')
+                    .insert({
+                        ...accountPayload,
+                        instagram_user_id: account.instagramUserId
+                    })
+                    .select('id')
+                    .single();
+
+                if (createAccountError) throw createAccountError;
+                instagramAccountId = newAccount.id;
+            }
+
+            if (account === accountsData[0]) {
+                primaryAccountId = instagramAccountId;
+                primaryAccountData = account;
+            }
+
+            // 3. Store Auth Token for THIS account
+            const expiresAt = new Date();
+            expiresAt.setSeconds(expiresAt.getSeconds() + expiresIn);
+            const encryptedToken = encrypt(accessToken);
 
             await supabase
-                .from('instagram_accounts')
-                .update({
-                    user_id: userId, // Ensure link
-                    username: instagramData.username,
-                    name: instagramData.name,
-                    profile_picture_url: instagramData.profilePictureUrl,
-                    followers_count: instagramData.followersCount,
-                    follows_count: instagramData.followsCount,
-                    media_count: instagramData.mediaCount,
-                    biography: instagramData.biography,
-                    website: instagramData.website,
-                    facebook_page_id: instagramData.pageId, // Store Page ID for messaging
-                    page_access_token: encryptedPageToken, // Store encrypted Page Token for DMs
-                    is_active: true,
-                    updated_at: new Date().toISOString()
-                })
-                .eq('id', instagramAccountId);
-        } else {
-            // Encrypt Page Token for secure storage (used for DMs)
-            const encryptedPageToken = instagramData.pageToken ? encrypt(instagramData.pageToken) : null;
-
-            const { data: newAccount, error: createAccountError } = await supabase
-                .from('instagram_accounts')
-                .insert({
+                .from('auth_tokens')
+                .upsert({
                     user_id: userId,
-                    instagram_user_id: instagramData.instagramUserId,
-                    username: instagramData.username,
-                    name: instagramData.name,
-                    profile_picture_url: instagramData.profilePictureUrl,
-                    followers_count: instagramData.followersCount,
-                    follows_count: instagramData.followsCount,
-                    media_count: instagramData.mediaCount,
-                    biography: instagramData.biography,
-                    website: instagramData.website,
-                    facebook_page_id: instagramData.pageId, // Store Page ID for messaging
-                    page_access_token: encryptedPageToken, // Store encrypted Page Token for DMs
-                    is_active: true
-                })
-                .select('id')
-                .single();
-
-            if (createAccountError) throw createAccountError;
-            instagramAccountId = newAccount.id;
+                    instagram_account_id: instagramAccountId,
+                    access_token: encryptedToken,
+                    expires_at: expiresAt.toISOString(),
+                    updated_at: new Date().toISOString()
+                }, { onConflict: 'instagram_account_id' });
         }
 
-        // 3. Store Auth Token
-        const expiresAt = new Date();
-        expiresAt.setSeconds(expiresAt.getSeconds() + expiresIn);
-        const encryptedToken = encrypt(accessToken);
-
-        // Delete existing token for this specific account
-        // Note: The unique constraint is on instagram_account_id now
-        await supabase
-            .from('auth_tokens')
-            .delete()
-            .eq('instagram_account_id', instagramAccountId);
-
-        const { error: insertError } = await supabase
-            .from('auth_tokens')
-            .insert({
-                user_id: userId,
-                instagram_account_id: instagramAccountId,
-                access_token: encryptedToken,
-                expires_at: expiresAt.toISOString()
-            });
-
-        if (insertError) {
-            console.error('Error saving auth token:', insertError);
-            throw new Error('Failed to save authentication token: ' + insertError.message);
-        }
-
-        // 4. Generate JWT
+        // 4. Generate JWT for the session (based on the first account)
         const jwtToken = generateToken({
             userId: userId,
-            instagramUserId: instagramData.instagramUserId,
-            instagramAccountId: instagramAccountId,
-            username: instagramData.username
+            instagramUserId: primaryAccountData.instagramUserId,
+            instagramAccountId: primaryAccountId,
+            username: primaryAccountData.username
         });
 
         return {
             userId,
-            instagramAccountId,
+            instagramAccountId: primaryAccountId,
             jwt: jwtToken,
-            user: instagramData
+            accountsCount: accountsData.length,
+            user: primaryAccountData
         };
     } catch (error) {
-        console.error('User creation error:', error);
-        throw new Error('Failed to create or update user');
+        console.error('User processing error:', error.response?.data || error.message);
+        throw new Error('Failed to process user and accounts: ' + error.message);
     }
 }
 
 /**
  * Get decrypted access token for a user
  * @param {string} userId - The user's UUID
+ * @param {string} [instagramAccountId] - Optional specific account ID
  * @returns {string|null} - The decrypted access token
  */
-export async function getAccessToken(userId) {
+export async function getAccessToken(userId, instagramAccountId) {
     try {
-        // First try to find the active instagram account
-        const { data: activeAccount } = await supabase
-            .from('instagram_accounts')
-            .select('id')
-            .eq('user_id', userId)
-            .eq('is_active', true)
-            .single();
-
         let query = supabase
             .from('auth_tokens')
             .select('access_token, expires_at');
 
-        if (activeAccount) {
-            query = query.eq('instagram_account_id', activeAccount.id);
+        // 1. If a specific account ID is provided, use it
+        if (instagramAccountId) {
+            query = query.eq('instagram_account_id', instagramAccountId);
         } else {
-            // Fallback: get any token for this user (legacy support or if no account is marked active)
-            query = query.eq('user_id', userId);
+            // 2. Otherwise, look for the active account
+            const { data: activeAccount } = await supabase
+                .from('instagram_accounts')
+                .select('id')
+                .eq('user_id', userId)
+                .eq('is_active', true)
+                .maybeSingle();
+
+            if (activeAccount) {
+                query = query.eq('instagram_account_id', activeAccount.id);
+            } else {
+                // 3. Last fallback: any token for this user
+                query = query.eq('user_id', userId);
+            }
         }
 
         const { data, error } = await query.maybeSingle(); // maybeSingle allows 0 rows without error
@@ -383,11 +412,106 @@ export async function logoutUser(userId) {
     }
 }
 
+/**
+ * Get all Instagram accounts for a user
+ * @param {string} userId - The user's UUID
+ * @returns {Array} - Array of accounts
+ */
+export async function getUserAccounts(userId) {
+    try {
+        const { data: accounts, error } = await supabase
+            .from('instagram_accounts')
+            .select('id, instagram_user_id, username, name, profile_picture_url, followers_count, is_active, created_at')
+            .eq('user_id', userId)
+            .order('created_at', { ascending: false });
+
+        if (error) throw error;
+        return accounts || [];
+    } catch (error) {
+        console.error('Error fetching user accounts:', error);
+        return [];
+    }
+}
+
+/**
+ * Switch active Instagram account
+ * @param {string} userId - The user's UUID
+ * @param {string} accountId - The Instagram account ID to switch to
+ * @returns {object} - Result with new JWT
+ */
+export async function switchActiveAccount(userId, accountId) {
+    try {
+        // Verify the account belongs to this user
+        const { data: account, error: accountError } = await supabase
+            .from('instagram_accounts')
+            .select('id, instagram_user_id, username, name, profile_picture_url')
+            .eq('id', accountId)
+            .eq('user_id', userId)
+            .single();
+
+        if (accountError || !account) {
+            return { success: false, error: 'Account not found or access denied' };
+        }
+
+        // Check if there's a valid token for this account
+        const { data: tokenData, error: tokenError } = await supabase
+            .from('auth_tokens')
+            .select('access_token, expires_at')
+            .eq('instagram_account_id', accountId)
+            .single();
+
+        if (tokenError || !tokenData) {
+            return { success: false, error: 'No valid token for this account. Please re-authenticate.' };
+        }
+
+        // Check expiration
+        if (new Date(tokenData.expires_at) < new Date()) {
+            return { success: false, error: 'Token expired for this account. Please re-authenticate.' };
+        }
+
+        // Deactivate all accounts for this user
+        await supabase
+            .from('instagram_accounts')
+            .update({ is_active: false })
+            .eq('user_id', userId);
+
+        // Activate the selected account
+        await supabase
+            .from('instagram_accounts')
+            .update({ is_active: true, updated_at: new Date().toISOString() })
+            .eq('id', accountId);
+
+        // Generate new JWT with the switched account
+        const jwt = generateToken({
+            userId: userId,
+            instagramUserId: account.instagram_user_id,
+            instagramAccountId: account.id,
+            username: account.username
+        });
+
+        return {
+            success: true,
+            jwt,
+            account: {
+                id: account.id,
+                username: account.username,
+                name: account.name,
+                profilePictureUrl: account.profile_picture_url
+            }
+        };
+    } catch (error) {
+        console.error('Error switching account:', error);
+        return { success: false, error: 'Failed to switch account' };
+    }
+}
+
 export default {
     getLoginUrl,
     exchangeCodeForToken,
     getInstagramBusinessAccount,
     createOrUpdateUser,
     getAccessToken,
-    logoutUser
+    logoutUser,
+    getUserAccounts,
+    switchActiveAccount
 };

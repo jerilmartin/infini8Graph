@@ -15,5 +15,6 @@ router.get('/reels', analyticsController.getReels);
 router.get('/posts', analyticsController.getPosts);
 router.get('/export', analyticsController.exportData);
 router.get('/content-intelligence', analyticsController.getContentIntelligence);
+router.get('/unified-overview', analyticsController.getUnifiedOverview);
 
 export default router;

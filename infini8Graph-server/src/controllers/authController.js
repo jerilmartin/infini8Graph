@@ -48,15 +48,14 @@ export async function callback(req, res) {
         // Exchange code for token
         const tokenData = await authService.exchangeCodeForToken(code);
 
-        // Get Instagram Business Account
-        const instagramData = await authService.getInstagramBusinessAccount(tokenData.accessToken);
+        // Get ALL authorized Instagram Business Accounts
+        const authorizedAccounts = await authService.getInstagramBusinessAccount(tokenData.accessToken);
+        console.log(`✅ Authorized ${authorizedAccounts.length} Instagram accounts`);
 
-        // Create or update user and get JWT
-        // IMPORTANT: Store the USER Access Token in auth_tokens (required for ads_read and user-level APIs)
-        // The Page Access Token is stored separately on the instagram_account for messaging
+        // Create or update user and all accounts
         const userData = await authService.createOrUpdateUser(
-            instagramData,
-            tokenData.accessToken,  // User token for ads access
+            authorizedAccounts,
+            tokenData.accessToken,
             tokenData.expiresIn
         );
 
@@ -157,10 +156,70 @@ export async function refreshToken(req, res) {
     }
 }
 
+/**
+ * Get user's Instagram accounts
+ */
+export async function getAccounts(req, res) {
+    try {
+        const accounts = await authService.getUserAccounts(req.user.userId);
+        res.json({
+            success: true,
+            accounts,
+            activeAccountId: req.user.instagramAccountId
+        });
+    } catch (error) {
+        console.error('Get accounts error:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to get accounts'
+        });
+    }
+}
+
+/**
+ * Switch active Instagram account
+ */
+export async function switchAccount(req, res) {
+    try {
+        const { accountId } = req.params;
+
+        const result = await authService.switchActiveAccount(req.user.userId, accountId);
+
+        if (!result.success) {
+            return res.status(400).json({
+                success: false,
+                error: result.error || 'Failed to switch account'
+            });
+        }
+
+        // Set new JWT cookie
+        res.cookie('auth_token', result.jwt, {
+            httpOnly: true,
+            secure: true,
+            sameSite: 'none',
+            maxAge: 7 * 24 * 60 * 60 * 1000
+        });
+
+        res.json({
+            success: true,
+            jwt: result.jwt,
+            account: result.account
+        });
+    } catch (error) {
+        console.error('Switch account error:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to switch account'
+        });
+    }
+}
+
 export default {
     login,
     callback,
     getMe,
     logout,
-    refreshToken
+    refreshToken,
+    getAccounts,
+    switchAccount
 };

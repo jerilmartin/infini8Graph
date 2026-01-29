@@ -1,13 +1,18 @@
 import AnalyticsService from '../services/analyticsService.js';
+import * as authService from '../services/authService.js';
 
 async function getAnalyticsService(req) {
-    console.log('📊 Creating AnalyticsService for user:', req.user?.userId, 'instagram:', req.user?.instagramUserId);
+    console.log('📊 Creating AnalyticsService for user:', req.user?.userId, 'instagram:', req.user?.instagramUserId, 'accountId:', req.user?.instagramAccountId);
 
     if (!req.user?.userId || !req.user?.instagramUserId) {
         throw new Error('Missing user credentials in request. userId=' + req.user?.userId + ', instagramUserId=' + req.user?.instagramUserId);
     }
 
-    const service = new AnalyticsService(req.user.userId, req.user.instagramUserId);
+    const service = new AnalyticsService(
+        req.user.userId,
+        req.user.instagramUserId,
+        req.user.instagramAccountId
+    );
 
     try {
         await service.initialize();
@@ -120,10 +125,102 @@ export async function getContentIntelligence(req, res) {
         const data = await analytics.getContentIntelligence();
         res.json({ success: true, data });
     } catch (error) {
-        console.error('Content intelligence error:', error);
+        console.error('Content Intel error:', error);
         res.status(500).json({ success: false, error: error.message });
     }
 }
 
-export default { getOverview, getGrowth, getBestTime, getHashtags, getReels, getPosts, exportData, getContentIntelligence };
+export async function getUnifiedOverview(req, res) {
+    try {
+        console.log('🌐 getUnifiedOverview called for user:', req.user?.userId);
+
+        // 1. Get all accounts for this user
+        const accounts = await authService.getUserAccounts(req.user.userId);
+
+        if (!accounts || accounts.length === 0) {
+            return res.json({ success: true, data: { metrics: {}, accounts: [] } });
+        }
+
+        // 2. Fetch overview for each account in parallel
+        const results = await Promise.allSettled(accounts.map(async (account) => {
+            const service = new AnalyticsService(req.user.userId, account.instagram_user_id, account.id);
+            await service.initialize();
+            const overview = await service.getOverview();
+            return {
+                accountId: account.id,
+                username: account.username,
+                data: overview
+            };
+        }));
+
+        // 3. Aggregate metrics
+        const successfulResults = results
+            .filter(r => r.status === 'fulfilled')
+            .map(r => r.value);
+
+        const unifiedMetrics = {
+            totalFollowers: 0,
+            totalPosts: 0,
+            totalImpressions: 0,
+            totalReach: 0,
+            totalSaved: 0,
+            avgEngagementRate: 0,
+            accountCount: successfulResults.length
+        };
+
+        let allRecentPosts = [];
+
+        successfulResults.forEach(result => {
+            const m = result.data.metrics;
+            unifiedMetrics.totalFollowers += m.followers || 0;
+            unifiedMetrics.totalPosts += m.posts || 0;
+            unifiedMetrics.totalImpressions += m.totalImpressions || 0;
+            unifiedMetrics.totalReach += m.totalReach || 0;
+            unifiedMetrics.totalSaved += m.totalSaved || 0;
+            unifiedMetrics.avgEngagementRate += m.engagementRate || 0;
+
+            // Tag posts with account info
+            const posts = (result.data.recentPosts || []).map(p => ({
+                ...p,
+                accountUsername: result.username
+            }));
+            allRecentPosts = [...allRecentPosts, ...posts];
+        });
+
+        if (unifiedMetrics.accountCount > 0) {
+            unifiedMetrics.avgEngagementRate = parseFloat((unifiedMetrics.avgEngagementRate / unifiedMetrics.accountCount).toFixed(2));
+        }
+
+        // Sort posts by date
+        allRecentPosts.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+
+        res.json({
+            success: true,
+            data: {
+                metrics: unifiedMetrics,
+                accounts: successfulResults.map(r => ({
+                    id: r.accountId,
+                    username: r.username,
+                    metrics: r.data.metrics
+                })),
+                recentPosts: allRecentPosts.slice(0, 20)
+            }
+        });
+    } catch (error) {
+        console.error('❌ Unified overview error:', error.message);
+        res.status(500).json({ success: false, error: error.message });
+    }
+}
+
+export default {
+    getOverview,
+    getGrowth,
+    getBestTime,
+    getHashtags,
+    getReels,
+    getPosts,
+    exportData,
+    getContentIntelligence,
+    getUnifiedOverview
+};
 

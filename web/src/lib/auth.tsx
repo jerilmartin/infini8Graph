@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useContext, useState, useEffect, useRef, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, useRef, ReactNode, useCallback } from 'react';
 import { authApi } from './api';
 
 interface User {
@@ -9,12 +9,26 @@ interface User {
     username: string;
 }
 
+interface Account {
+    id: string;
+    instagram_user_id: string;
+    username: string;
+    name: string;
+    profile_picture_url: string | null;
+    followers_count: number;
+    is_active: boolean;
+}
+
 interface AuthContextType {
     user: User | null;
     loading: boolean;
+    accounts: Account[];
+    activeAccountId: string | null;
     login: () => Promise<void>;
     logout: () => Promise<void>;
     checkAuth: () => Promise<void>;
+    switchAccount: (accountId: string) => Promise<boolean>;
+    refreshAccounts: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -22,7 +36,21 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export function AuthProvider({ children }: { children: ReactNode }) {
     const [user, setUser] = useState<User | null>(null);
     const [loading, setLoading] = useState(true);
+    const [accounts, setAccounts] = useState<Account[]>([]);
+    const [activeAccountId, setActiveAccountId] = useState<string | null>(null);
     const authChecked = useRef(false);
+
+    const refreshAccounts = useCallback(async () => {
+        try {
+            const response = await authApi.getAccounts();
+            if (response.data.success) {
+                setAccounts(response.data.accounts || []);
+                setActiveAccountId(response.data.activeAccountId || null);
+            }
+        } catch (err) {
+            console.error('Failed to fetch accounts:', err);
+        }
+    }, []);
 
     const checkAuth = async () => {
         // Check for token in URL (from OAuth redirect)
@@ -47,20 +75,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         authChecked.current = true;
 
         try {
-            // Get token manually to be 100% sure
-            const Cookies = (await import('js-cookie')).default;
-            const token = Cookies.get('auth_token') || localStorage.getItem('auth_token');
-
-            console.log('🔥 CHECKING AUTH WITH TOKEN:', token ? 'YES' : 'NO');
-
-            // Bypass api.ts interceptor potential failure by passing config manually
-            const config = token ? { headers: { Authorization: `Bearer ${token}` } } : {};
-
-            // Use manual call instead of authApi.getMe() to isolate the issue
-            const response = await authApi.getMe(); // Still use authApi but interceptor should work now or we failed earlier
+            const response = await authApi.getMe();
 
             if (response.data.success) {
                 setUser(response.data.user);
+                // Fetch accounts after successful auth
+                await refreshAccounts();
             } else {
                 setUser(null);
             }
@@ -91,7 +111,42 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             // Ignore logout errors
         }
         setUser(null);
+        setAccounts([]);
+        setActiveAccountId(null);
+        localStorage.removeItem('auth_token');
         window.location.href = '/login';
+    };
+
+    const switchAccount = async (accountId: string): Promise<boolean> => {
+        try {
+            const response = await authApi.switchAccount(accountId);
+            if (response.data.success) {
+                // Update token
+                const Cookies = (await import('js-cookie')).default;
+                Cookies.set('auth_token', response.data.jwt, { path: '/', sameSite: 'Lax' });
+                localStorage.setItem('auth_token', response.data.jwt);
+
+                // Update user context
+                setUser({
+                    userId: user?.userId || '',
+                    instagramUserId: response.data.account.id,
+                    username: response.data.account.username
+                });
+
+                setActiveAccountId(accountId);
+
+                // Refresh accounts to update is_active flags
+                await refreshAccounts();
+
+                // Reload to refresh dashboard data with new account
+                window.location.reload();
+                return true;
+            }
+            return false;
+        } catch (error) {
+            console.error('Switch account error:', error);
+            return false;
+        }
     };
 
     useEffect(() => {
@@ -99,7 +154,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }, []);
 
     return (
-        <AuthContext.Provider value={{ user, loading, login, logout, checkAuth }}>
+        <AuthContext.Provider value={{
+            user,
+            loading,
+            accounts,
+            activeAccountId,
+            login,
+            logout,
+            checkAuth,
+            switchAccount,
+            refreshAccounts
+        }}>
             {children}
         </AuthContext.Provider>
     );

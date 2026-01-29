@@ -41,7 +41,10 @@ export const authApi = {
     getLoginUrl: () => api.get('/auth/login'),
     getMe: () => api.get('/auth/me'),
     logout: () => api.post('/auth/logout'),
-    refresh: () => api.post('/auth/refresh')
+    refresh: () => api.post('/auth/refresh'),
+    // Multi-account support
+    getAccounts: () => api.get('/auth/accounts'),
+    switchAccount: (accountId: string) => api.post(`/auth/switch/${accountId}`)
 };
 
 export const instagramApi = {
@@ -53,7 +56,8 @@ export const instagramApi = {
     getPosts: (limit = 50) => api.get(`/instagram/posts?limit=${limit}`),
     exportData: (format = 'json', metrics = 'overview,growth,posts') =>
         api.get(`/instagram/export?format=${format}&metrics=${metrics}`),
-    getContentIntelligence: () => api.get('/instagram/content-intelligence')
+    getContentIntelligence: () => api.get('/instagram/content-intelligence'),
+    getUnifiedOverview: () => api.get('/instagram/unified-overview')
 };
 
 export const adsApi = {

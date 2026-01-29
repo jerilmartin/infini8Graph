@@ -95,7 +95,7 @@ export async function getAdInsights(req, res) {
         }
 
         // Get comprehensive insights with all new metrics
-        const [summaryRes, dailyRes, demographicsRes, placementsRes, deviceRes, positionRes, countryRes, regionRes] = await Promise.allSettled([
+        const requests = [
             // Summary metrics with ROAS
             axios.get(`${GRAPH_API_BASE}/${accountId}/insights`, {
                 params: {
@@ -167,7 +167,28 @@ export async function getAdInsights(req, res) {
                     breakdowns: 'region'
                 }
             })
-        ]);
+        ];
+
+        // Add comparison request if possible
+        let comparisonDatePreset = null;
+        if (datePreset === 'last_7d') comparisonDatePreset = 'last_week_mon_sun'; // Close enough for comparison
+        else if (datePreset === 'last_30d') comparisonDatePreset = 'last_month';
+
+        // For custom WoW, we usually need specific time_range
+        // But for Meta API, we can use specific presets or date ranges
+        // Let's just try to fetch last_7d if datePreset is last_7d
+        if (comparisonDatePreset) {
+            requests.push(axios.get(`${GRAPH_API_BASE}/${accountId}/insights`, {
+                params: {
+                    access_token: accessToken,
+                    fields: 'spend,impressions,reach,clicks',
+                    date_preset: comparisonDatePreset
+                }
+            }));
+        }
+
+        const results = await Promise.allSettled(requests);
+        const [summaryRes, dailyRes, demographicsRes, placementsRes, deviceRes, positionRes, countryRes, regionRes, comparisonRes] = results;
 
         // Process results
         const summary = summaryRes.status === 'fulfilled' ? summaryRes.value.data.data?.[0] : null;
@@ -224,7 +245,6 @@ export async function getAdInsights(req, res) {
         }
 
         // Ad Relevance Diagnostics - aggregate from individual ads
-        // Rankings are only available at ad level, not account level
         let qualityRankings = [];
         let engagementRankings = [];
         let conversionRankings = [];
@@ -244,7 +264,6 @@ export async function getAdInsights(req, res) {
             }
         }
 
-        // Helper function to get most common ranking
         const getMostCommon = (arr) => {
             if (arr.length === 0) return 'UNKNOWN';
             const counts = arr.reduce((acc, val) => { acc[val] = (acc[val] || 0) + 1; return acc; }, {});
@@ -274,6 +293,27 @@ export async function getAdInsights(req, res) {
             socialSpend: summary?.social_spend || 0
         };
 
+        // Process comparison data
+        const comparisonSummary = comparisonRes?.status === 'fulfilled' ? comparisonRes.value.data.data?.[0] : null;
+        let comparisonTrend = null;
+
+        if (comparisonSummary) {
+            const calculateTrend = (curr, prev) => {
+                const c = parseFloat(curr || 0);
+                const p = parseFloat(prev || 0);
+                if (p === 0) return 0;
+                return Math.round(((c - p) / p) * 100);
+            };
+
+            comparisonTrend = {
+                spendTrend: calculateTrend(summary?.spend, comparisonSummary.spend),
+                impressionsTrend: calculateTrend(summary?.impressions, comparisonSummary.impressions),
+                reachTrend: calculateTrend(summary?.reach, comparisonSummary.reach),
+                clicksTrend: calculateTrend(summary?.clicks, comparisonSummary.clicks),
+                label: datePreset === 'last_7d' ? 'vs last week' : datePreset === 'last_30d' ? 'vs last month' : 'vs previous'
+            };
+        }
+
         res.json({
             success: true,
             data: {
@@ -285,7 +325,8 @@ export async function getAdInsights(req, res) {
                     cpc: summary?.cpc || '0',
                     cpm: summary?.cpm || '0',
                     ctr: summary?.ctr || '0',
-                    frequency: summary?.frequency || '0'
+                    frequency: summary?.frequency || '0',
+                    comparison: comparisonTrend
                 },
                 relevanceDiagnostics,
                 roas,
