@@ -85,6 +85,7 @@ class AutoReplyService {
 
     /**
      * Get access token for a user by Instagram account ID
+     * Returns both User Token (for ads) and Page Token (for DMs)
      */
     async getAccessTokenByInstagramId(instagramUserId) {
         if (instagramUserId === '0') {
@@ -93,10 +94,10 @@ class AutoReplyService {
         }
 
         try {
-            // First find the instagram account (include facebook_page_id for messaging)
+            // First find the instagram account (include facebook_page_id AND page_access_token for messaging)
             const { data: account, error: accountError } = await supabase
                 .from('instagram_accounts')
-                .select('id, user_id, facebook_page_id')
+                .select('id, user_id, facebook_page_id, page_access_token')
                 .eq('instagram_user_id', instagramUserId)
                 .single();
 
@@ -105,7 +106,7 @@ class AutoReplyService {
                 return null;
             }
 
-            // Get the auth token
+            // Get the auth token (User token for ads, etc.)
             const { data: tokenData, error: tokenError } = await supabase
                 .from('auth_tokens')
                 .select('access_token, expires_at')
@@ -123,13 +124,24 @@ class AutoReplyService {
                 return null;
             }
 
-            const decryptedToken = decrypt(tokenData.access_token);
-            console.log(`🔑 Token retrieved, first 20 chars: ${decryptedToken?.substring(0, 20)}...`);
-            console.log(`🔑 Token length: ${decryptedToken?.length}`);
+            const decryptedUserToken = decrypt(tokenData.access_token);
+
+            // Decrypt Page Token if available (used for DMs)
+            let decryptedPageToken = null;
+            if (account.page_access_token) {
+                decryptedPageToken = decrypt(account.page_access_token);
+                console.log(`🔑 Page Token retrieved for DMs, first 20 chars: ${decryptedPageToken?.substring(0, 20)}...`);
+            } else {
+                console.log('⚠️ No Page Token stored - DMs may fail. User needs to re-login.');
+            }
+
+            console.log(`🔑 User Token retrieved, first 20 chars: ${decryptedUserToken?.substring(0, 20)}...`);
+            console.log(`🔑 Token length: ${decryptedUserToken?.length}`);
             console.log(`📄 Facebook Page ID: ${account.facebook_page_id}`);
 
             return {
-                accessToken: decryptedToken,
+                accessToken: decryptedUserToken, // For backward compatibility & ads
+                pageToken: decryptedPageToken,   // For DMs/messaging
                 instagramAccountId: account.id,
                 userId: account.user_id,
                 facebookPageId: account.facebook_page_id
@@ -451,15 +463,17 @@ class AutoReplyService {
                 if (rule.sendDM && rule.dmReply && from?.id) {
                     console.log(`📩 Also sending DM to commenter: ${from?.username} (ID: ${from?.id})`);
                     try {
-                        // Need to check if we have the Facebook Page ID for DM
-                        if (tokenData.facebookPageId) {
+                        // DMs require the Page Token, not User Token!
+                        if (tokenData.facebookPageId && tokenData.pageToken) {
                             await this.sendMessageReply(
                                 tokenData.facebookPageId,
                                 from.id,  // Commenter's IGSID
                                 rule.dmReply,
-                                tokenData.accessToken
+                                tokenData.pageToken  // Use Page Token for DMs!
                             );
                             console.log(`✅ DM sent to commenter ${from?.username}`);
+                        } else if (!tokenData.pageToken) {
+                            console.warn('⚠️ Cannot send DM - Page Token not available. User needs to re-login to store Page Token.');
                         } else {
                             console.warn('⚠️ Cannot send DM - Facebook Page ID not available. User needs to re-login.');
                         }

@@ -39,14 +39,18 @@ export default function AutomationPage() {
         keywords: [],
         comment_reply: '',
         dm_reply: '',
-        send_dm: true,
+        send_dm: false,
         is_active: false,
         media_id: null,
         media_ids: []
     });
 
+    // UI States
+    const [showKeywords, setShowKeywords] = useState(false);
+    const [showCreateOverride, setShowCreateOverride] = useState(false);
+    const [expandedOverride, setExpandedOverride] = useState<string | null>(null);
+
     // Override creation
-    const [showCreate, setShowCreate] = useState(false);
     const [newRule, setNewRule] = useState<AutomationRule>({
         name: '',
         keywords: [],
@@ -59,7 +63,6 @@ export default function AutomationPage() {
     });
     const [kwInput, setKwInput] = useState('');
     const [defaultKwInput, setDefaultKwInput] = useState('');
-    const [expandedId, setExpandedId] = useState<string | null>(null);
 
     const fetchData = useCallback(async () => {
         setLoading(true);
@@ -75,7 +78,10 @@ export default function AutomationPage() {
                 setRules(allRules);
 
                 const def = allRules.find(r => !r.media_id && (!r.media_ids || r.media_ids.length === 0));
-                if (def) setDefaultRule(def);
+                if (def) {
+                    setDefaultRule(def);
+                    if (def.keywords?.length > 0) setShowKeywords(true);
+                }
             }
 
             if (mediaRes.ok) {
@@ -130,7 +136,7 @@ export default function AutomationPage() {
             if (res.ok) {
                 const data = await res.json();
                 setDefaultRule(data.rule);
-                notify('success', 'Default saved!');
+                notify('success', 'Saved successfully!');
                 fetchData();
             } else {
                 const err = await res.json();
@@ -159,7 +165,7 @@ export default function AutomationPage() {
 
             if (res.ok) {
                 notify('success', 'Override created!');
-                setShowCreate(false);
+                setShowCreateOverride(false);
                 setNewRule({ name: '', keywords: [], comment_reply: '', dm_reply: '', send_dm: true, is_active: true, media_id: null, media_ids: [] });
                 fetchData();
             } else {
@@ -172,27 +178,8 @@ export default function AutomationPage() {
         }
     };
 
-    const updateOverride = async (rule: AutomationRule) => {
-        if (!rule.id) return;
-        setSaving(true);
-        try {
-            await fetch(`${API_BASE}/api/automation/rules/${rule.id}`, {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                credentials: 'include',
-                body: JSON.stringify(rule)
-            });
-            notify('success', 'Updated!');
-            fetchData();
-        } catch {
-            notify('error', 'Update failed');
-        } finally {
-            setSaving(false);
-        }
-    };
-
     const deleteRule = async (id: string) => {
-        if (!confirm('Delete this rule?')) return;
+        if (!confirm('Delete this override?')) return;
         try {
             await fetch(`${API_BASE}/api/automation/rules/${id}`, { method: 'DELETE', credentials: 'include' });
             fetchData();
@@ -207,258 +194,369 @@ export default function AutomationPage() {
         });
     };
 
-    const addKw = () => {
-        if (!kwInput.trim()) return;
-        // Split by comma or space, filter empty, make lowercase
-        const newKws = kwInput.split(/[,\s]+/).map(k => k.trim().toLowerCase()).filter(k => k.length > 0);
-        const uniqueKws = [...new Set([...newRule.keywords, ...newKws])];
-        setNewRule({ ...newRule, keywords: uniqueKws });
-        setKwInput('');
+    const addKw = (input: string, setInput: (v: string) => void, rule: AutomationRule, setRule: (r: AutomationRule) => void) => {
+        if (!input.trim()) return;
+        const newKws = input.split(/[,\s]+/).map(k => k.trim().toLowerCase()).filter(k => k.length > 0);
+        const uniqueKws = [...new Set([...rule.keywords, ...newKws])];
+        setRule({ ...rule, keywords: uniqueKws });
+        setInput('');
     };
 
     if (loading) {
         return (
-            <div className="flex items-center justify-center h-screen bg-slate-50">
-                <div className="w-8 h-8 border-3 border-indigo-600 border-t-transparent rounded-full animate-spin" />
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', background: '#f8fafc' }}>
+                <div style={{ textAlign: 'center' }}>
+                    <div style={{ width: 40, height: 40, border: '3px solid #e2e8f0', borderTopColor: '#6366f1', borderRadius: '50%', animation: 'spin 1s linear infinite', margin: '0 auto 12px' }} />
+                    <p style={{ color: '#64748b', fontSize: 14 }}>Loading automation...</p>
+                </div>
+                <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
             </div>
         );
     }
 
     return (
-        <div className="min-h-screen bg-slate-50">
+        <div style={{ minHeight: '100vh', background: 'linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%)' }}>
             {/* Toast */}
             {toast && (
-                <div className={`fixed top-4 right-4 z-50 px-4 py-3 rounded-xl text-sm font-medium shadow-lg ${toast.type === 'success' ? 'bg-emerald-500 text-white' : 'bg-red-500 text-white'
-                    }`}>
-                    {toast.msg}
+                <div style={{
+                    position: 'fixed', top: 24, right: 24, zIndex: 1000,
+                    padding: '14px 20px', borderRadius: 12, fontSize: 14, fontWeight: 500,
+                    background: toast.type === 'success' ? '#10b981' : '#ef4444', color: 'white',
+                    boxShadow: '0 10px 40px rgba(0,0,0,0.15)', display: 'flex', alignItems: 'center', gap: 8
+                }}>
+                    {toast.type === 'success' ? '✓' : '✕'} {toast.msg}
                 </div>
             )}
 
-            <div className="max-w-2xl mx-auto px-6 py-10">
+            <div style={{ maxWidth: 1200, margin: '0 auto', padding: '32px 24px' }}>
                 {/* Header */}
-                <div className="mb-8">
-                    <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg shadow-indigo-200">
-                            <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                <div style={{ marginBottom: 32 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                        <div style={{
+                            width: 52, height: 52, borderRadius: 16,
+                            background: 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            boxShadow: '0 8px 24px rgba(99, 102, 241, 0.3)'
+                        }}>
+                            <svg width="24" height="24" fill="none" stroke="white" strokeWidth="2" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
                             </svg>
                         </div>
-                        Auto-Reply
-                    </h1>
-                    <p className="text-slate-500 mt-2 ml-[52px]">Automatically respond to Instagram comments</p>
-                </div>
-
-                {/* DEFAULT AUTOMATION CARD */}
-                <div className="bg-white rounded-2xl shadow-sm border border-slate-200 mb-6 overflow-hidden">
-                    <div className="px-6 py-5 border-b border-slate-100 flex items-center justify-between">
                         <div>
-                            <h2 className="font-semibold text-slate-900">Default Reply</h2>
-                            <p className="text-sm text-slate-500 mt-0.5">Applies to all posts without a specific override</p>
+                            <h1 style={{ fontSize: 26, fontWeight: 700, color: '#0f172a', margin: 0, letterSpacing: '-0.02em' }}>Auto-Reply</h1>
+                            <p style={{ fontSize: 14, color: '#64748b', margin: '4px 0 0' }}>Automatically respond to Instagram comments & DMs</p>
                         </div>
-                        <button
-                            onClick={() => setDefaultRule({ ...defaultRule, is_active: !defaultRule.is_active })}
-                            className={`relative w-12 h-6 rounded-full transition-all ${defaultRule.is_active ? 'bg-indigo-600' : 'bg-slate-300'
-                                }`}
-                        >
-                            <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-all ${defaultRule.is_active ? 'left-7' : 'left-1'
-                                }`} />
-                        </button>
-                    </div>
-
-                    <div className="p-6 space-y-5">
-                        {/* Keywords (Optional) */}
-                        <div>
-                            <label className="block text-sm font-medium text-slate-700 mb-2">
-                                Trigger Keywords <span className="text-slate-400 font-normal">(optional)</span>
-                            </label>
-                            <div className="flex gap-2 mb-2">
-                                <input
-                                    type="text"
-                                    value={defaultKwInput}
-                                    onChange={e => setDefaultKwInput(e.target.value)}
-                                    onKeyPress={e => {
-                                        if (e.key === 'Enter') {
-                                            e.preventDefault();
-                                            if (defaultKwInput.trim()) {
-                                                // Split by comma or space, filter empty, make lowercase
-                                                const newKws = defaultKwInput.split(/[,\s]+/).map(k => k.trim().toLowerCase()).filter(k => k.length > 0);
-                                                const uniqueKws = [...new Set([...defaultRule.keywords, ...newKws])];
-                                                setDefaultRule({ ...defaultRule, keywords: uniqueKws });
-                                                setDefaultKwInput('');
-                                            }
-                                        }
-                                    }}
-                                    placeholder="Type keyword and press Enter (e.g. price)"
-                                    className="flex-1 px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:border-indigo-500 outline-none"
-                                />
-                                <button
-                                    onClick={() => {
-                                        if (defaultKwInput.trim()) {
-                                            // Split by comma or space, filter empty, make lowercase
-                                            const newKws = defaultKwInput.split(/[,\s]+/).map(k => k.trim().toLowerCase()).filter(k => k.length > 0);
-                                            const uniqueKws = [...new Set([...defaultRule.keywords, ...newKws])];
-                                            setDefaultRule({ ...defaultRule, keywords: uniqueKws });
-                                            setDefaultKwInput('');
-                                        }
-                                    }}
-                                    className="px-4 py-2 bg-slate-200 hover:bg-slate-300 rounded-lg text-sm text-slate-700 font-medium transition-colors"
-                                >
-                                    Add
-                                </button>
-                            </div>
-                            <div className="flex flex-wrap gap-2 min-h-[28px]">
-                                {defaultRule.keywords.length === 0 ? (
-                                    <span className="text-xs text-slate-500 italic">No keywords = replies to ALL comments</span>
-                                ) : (
-                                    defaultRule.keywords.map(k => (
-                                        <span key={k} className="px-2.5 py-1 bg-indigo-100 text-indigo-700 text-xs rounded-full flex items-center gap-1.5 font-medium">
-                                            #{k}
-                                            <button
-                                                onClick={() => setDefaultRule({ ...defaultRule, keywords: defaultRule.keywords.filter(x => x !== k) })}
-                                                className="hover:text-indigo-900"
-                                            >
-                                                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                                                </svg>
-                                            </button>
-                                        </span>
-                                    ))
-                                )}
-                            </div>
-                            <p className="text-xs text-slate-400 mt-2">Separate multiple keywords with commas or spaces. Case-insensitive.</p>
-                        </div>
-
-                        {/* Public Reply */}
-                        <div>
-                            <label className="block text-sm font-medium text-slate-700 mb-2">
-                                Public Reply
-                            </label>
-                            <textarea
-                                value={defaultRule.comment_reply}
-                                onChange={e => setDefaultRule({ ...defaultRule, comment_reply: e.target.value })}
-                                placeholder="Thanks for commenting! Check your DMs 📩"
-                                className="w-full h-24 px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 placeholder-slate-400 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 outline-none resize-none transition-all"
-                            />
-                            <p className="text-xs text-slate-400 mt-1.5">This is posted as a reply to the comment</p>
-                        </div>
-
-                        {/* DM Reply */}
-                        <div>
-                            <div className="flex items-center justify-between mb-2">
-                                <label className="text-sm font-medium text-slate-700">Private DM</label>
-                                <button
-                                    onClick={() => setDefaultRule({ ...defaultRule, send_dm: !defaultRule.send_dm })}
-                                    className={`text-xs px-3 py-1.5 rounded-full font-medium transition-all ${defaultRule.send_dm
-                                        ? 'bg-indigo-100 text-indigo-700'
-                                        : 'bg-slate-100 text-slate-500'
-                                        }`}
-                                >
-                                    {defaultRule.send_dm ? '✓ Enabled' : 'Disabled'}
-                                </button>
-                            </div>
-                            {defaultRule.send_dm && (
-                                <textarea
-                                    value={defaultRule.dm_reply}
-                                    onChange={e => setDefaultRule({ ...defaultRule, dm_reply: e.target.value })}
-                                    placeholder="Hey! Thanks for reaching out..."
-                                    className="w-full h-24 px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 placeholder-slate-400 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 outline-none resize-none transition-all"
-                                />
-                            )}
-                        </div>
-
-                        {/* Save Button */}
-                        <button
-                            onClick={saveDefault}
-                            disabled={saving}
-                            className="w-full py-3 rounded-xl font-semibold text-sm bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white shadow-lg shadow-indigo-200 disabled:opacity-50 transition-all flex items-center justify-center gap-2"
-                        >
-                            {saving ? (
-                                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                            ) : (
-                                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                                </svg>
-                            )}
-                            Save Default
-                        </button>
                     </div>
                 </div>
 
-                {/* POST-SPECIFIC OVERRIDES CARD */}
-                <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-                    <div className="px-6 py-5 border-b border-slate-100 flex items-center justify-between">
-                        <div>
-                            <h2 className="font-semibold text-slate-900">Post Overrides</h2>
-                            <p className="text-sm text-slate-500 mt-0.5">Custom replies for specific posts (take priority)</p>
-                        </div>
-                        {!showCreate && (
-                            <button
-                                onClick={() => setShowCreate(true)}
-                                className="px-4 py-2 rounded-lg text-sm font-medium bg-slate-100 hover:bg-slate-200 text-slate-700 flex items-center gap-1.5 transition-colors"
-                            >
-                                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                                </svg>
-                                Add Override
-                            </button>
-                        )}
-                    </div>
+                {/* Two Column Layout */}
+                <div style={{ display: 'flex', gap: 28, alignItems: 'flex-start' }}>
+                    {/* LEFT COLUMN */}
+                    <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 24 }}>
 
-                    <div className="p-6">
-                        {/* Create Override Form */}
-                        {showCreate && (
-                            <div className="rounded-xl bg-indigo-50 border border-indigo-100 p-5 mb-5">
-                                <div className="flex items-center justify-between mb-5">
-                                    <h3 className="font-semibold text-slate-900">New Override</h3>
-                                    <button onClick={() => setShowCreate(false)} className="text-slate-400 hover:text-slate-600">
-                                        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        {/* CARD: Default Auto-Reply */}
+                        <div style={{
+                            background: 'white', borderRadius: 20, overflow: 'hidden',
+                            boxShadow: '0 1px 3px rgba(0,0,0,0.04), 0 4px 12px rgba(0,0,0,0.03)',
+                            border: '1px solid rgba(0,0,0,0.04)'
+                        }}>
+                            {/* Card Header */}
+                            <div style={{
+                                padding: '20px 24px', borderBottom: '1px solid #f1f5f9',
+                                display: 'flex', alignItems: 'center', justifyContent: 'space-between'
+                            }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                                    <div style={{
+                                        width: 10, height: 10, borderRadius: '50%',
+                                        background: defaultRule.is_active ? '#10b981' : '#d1d5db',
+                                        boxShadow: defaultRule.is_active ? '0 0 8px rgba(16, 185, 129, 0.5)' : 'none'
+                                    }} />
+                                    <div>
+                                        <h2 style={{ fontSize: 16, fontWeight: 600, color: '#0f172a', margin: 0 }}>Default Auto-Reply</h2>
+                                        <p style={{ fontSize: 12, color: '#94a3b8', margin: '2px 0 0' }}>Applies to all your posts</p>
+                                    </div>
+                                </div>
+                                <button
+                                    onClick={() => setDefaultRule({ ...defaultRule, is_active: !defaultRule.is_active })}
+                                    style={{
+                                        width: 52, height: 28, borderRadius: 14, border: 'none', cursor: 'pointer',
+                                        background: defaultRule.is_active ? '#6366f1' : '#e2e8f0',
+                                        position: 'relative', transition: 'background 0.2s'
+                                    }}
+                                >
+                                    <div style={{
+                                        width: 22, height: 22, borderRadius: '50%', background: 'white',
+                                        position: 'absolute', top: 3,
+                                        left: defaultRule.is_active ? 27 : 3,
+                                        transition: 'left 0.2s', boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+                                    }} />
+                                </button>
+                            </div>
+
+                            {/* Card Body */}
+                            <div style={{ padding: 24 }}>
+                                {/* Trigger Keywords - Collapsible */}
+                                <div style={{ marginBottom: 20 }}>
+                                    <button
+                                        onClick={() => setShowKeywords(!showKeywords)}
+                                        style={{
+                                            display: 'flex', alignItems: 'center', gap: 8, background: 'none',
+                                            border: 'none', cursor: 'pointer', padding: 0, fontSize: 13,
+                                            color: '#64748b', fontWeight: 500
+                                        }}
+                                    >
+                                        <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"
+                                            style={{ transform: showKeywords ? 'rotate(90deg)' : 'none', transition: 'transform 0.2s' }}>
+                                            <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
                                         </svg>
+                                        Trigger keywords
+                                        {defaultRule.keywords.length > 0 && (
+                                            <span style={{
+                                                background: '#ede9fe', color: '#6366f1', fontSize: 11,
+                                                padding: '2px 8px', borderRadius: 10, fontWeight: 600
+                                            }}>{defaultRule.keywords.length}</span>
+                                        )}
                                     </button>
+
+                                    {showKeywords && (
+                                        <div style={{ marginTop: 16, paddingLeft: 24 }}>
+                                            <p style={{ fontSize: 12, color: '#94a3b8', margin: '0 0 12px' }}>
+                                                Only reply when comments contain these words. Leave empty to reply to all.
+                                            </p>
+                                            <div style={{ display: 'flex', gap: 10 }}>
+                                                <input
+                                                    type="text"
+                                                    value={defaultKwInput}
+                                                    onChange={e => setDefaultKwInput(e.target.value)}
+                                                    onKeyPress={e => e.key === 'Enter' && (e.preventDefault(), addKw(defaultKwInput, setDefaultKwInput, defaultRule, setDefaultRule))}
+                                                    placeholder="price, info, link..."
+                                                    style={{
+                                                        flex: 1, padding: '12px 16px', borderRadius: 12, fontSize: 14,
+                                                        border: '1.5px solid #e2e8f0', outline: 'none', background: '#fafafa',
+                                                        transition: 'border 0.2s, background 0.2s'
+                                                    }}
+                                                    onFocus={e => { e.target.style.borderColor = '#6366f1'; e.target.style.background = 'white'; }}
+                                                    onBlur={e => { e.target.style.borderColor = '#e2e8f0'; e.target.style.background = '#fafafa'; }}
+                                                />
+                                                <button
+                                                    onClick={() => addKw(defaultKwInput, setDefaultKwInput, defaultRule, setDefaultRule)}
+                                                    style={{
+                                                        padding: '12px 18px', borderRadius: 12, border: 'none',
+                                                        background: '#f1f5f9', color: '#475569', fontSize: 13,
+                                                        fontWeight: 600, cursor: 'pointer', transition: 'background 0.2s'
+                                                    }}
+                                                    onMouseOver={e => e.currentTarget.style.background = '#e2e8f0'}
+                                                    onMouseOut={e => e.currentTarget.style.background = '#f1f5f9'}
+                                                >Add</button>
+                                            </div>
+                                            {defaultRule.keywords.length > 0 && (
+                                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 12 }}>
+                                                    {defaultRule.keywords.map(k => (
+                                                        <span key={k} style={{
+                                                            display: 'inline-flex', alignItems: 'center', gap: 6,
+                                                            padding: '6px 12px', background: '#ede9fe', color: '#6366f1',
+                                                            fontSize: 13, borderRadius: 20, fontWeight: 500
+                                                        }}>
+                                                            {k}
+                                                            <button onClick={() => setDefaultRule({ ...defaultRule, keywords: defaultRule.keywords.filter(x => x !== k) })}
+                                                                style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, display: 'flex', color: '#6366f1' }}>
+                                                                <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
+                                                                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                                                                </svg>
+                                                            </button>
+                                                        </span>
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
                                 </div>
 
-                                <div className="space-y-5">
-                                    {/* Name */}
-                                    <div>
-                                        <label className="block text-sm font-medium text-slate-700 mb-2">Rule Name</label>
+                                {/* Comment Reply */}
+                                <div style={{ marginBottom: 20 }}>
+                                    <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#374151', marginBottom: 8 }}>
+                                        Comment reply
+                                    </label>
+                                    <textarea
+                                        value={defaultRule.comment_reply}
+                                        onChange={e => setDefaultRule({ ...defaultRule, comment_reply: e.target.value })}
+                                        placeholder="Thanks for your comment! Check your DMs 📩"
+                                        style={{
+                                            width: '100%', minHeight: 100, padding: '14px 16px', borderRadius: 14,
+                                            border: '1.5px solid #e2e8f0', fontSize: 14, resize: 'vertical',
+                                            outline: 'none', background: '#fafafa', lineHeight: 1.5,
+                                            transition: 'border 0.2s, background 0.2s', boxSizing: 'border-box'
+                                        }}
+                                        onFocus={e => { e.target.style.borderColor = '#6366f1'; e.target.style.background = 'white'; }}
+                                        onBlur={e => { e.target.style.borderColor = '#e2e8f0'; e.target.style.background = '#fafafa'; }}
+                                    />
+                                </div>
+
+                                {/* DM Toggle */}
+                                <div style={{ marginBottom: 24 }}>
+                                    <button
+                                        onClick={() => setDefaultRule({ ...defaultRule, send_dm: !defaultRule.send_dm })}
+                                        style={{
+                                            display: 'flex', alignItems: 'center', gap: 10, background: 'none',
+                                            border: 'none', cursor: 'pointer', padding: 0
+                                        }}
+                                    >
+                                        <div style={{
+                                            width: 22, height: 22, borderRadius: 6,
+                                            border: defaultRule.send_dm ? 'none' : '2px solid #d1d5db',
+                                            background: defaultRule.send_dm ? '#6366f1' : 'white',
+                                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                            transition: 'all 0.2s'
+                                        }}>
+                                            {defaultRule.send_dm && (
+                                                <svg width="14" height="14" fill="none" stroke="white" strokeWidth="3" viewBox="0 0 24 24">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                                                </svg>
+                                            )}
+                                        </div>
+                                        <span style={{ fontSize: 14, fontWeight: 500, color: '#374151' }}>Also send a private DM</span>
+                                    </button>
+
+                                    {defaultRule.send_dm && (
+                                        <div style={{ marginTop: 16, paddingLeft: 32 }}>
+                                            <textarea
+                                                value={defaultRule.dm_reply}
+                                                onChange={e => setDefaultRule({ ...defaultRule, dm_reply: e.target.value })}
+                                                placeholder="Hey! Thanks for reaching out. Here's more info..."
+                                                style={{
+                                                    width: '100%', minHeight: 90, padding: '14px 16px', borderRadius: 14,
+                                                    border: '1.5px solid #e2e8f0', fontSize: 14, resize: 'vertical',
+                                                    outline: 'none', background: '#fafafa', lineHeight: 1.5,
+                                                    transition: 'border 0.2s, background 0.2s', boxSizing: 'border-box'
+                                                }}
+                                                onFocus={e => { e.target.style.borderColor = '#6366f1'; e.target.style.background = 'white'; }}
+                                                onBlur={e => { e.target.style.borderColor = '#e2e8f0'; e.target.style.background = '#fafafa'; }}
+                                            />
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* Save Button */}
+                                <button
+                                    onClick={saveDefault}
+                                    disabled={saving}
+                                    style={{
+                                        width: '100%', padding: '14px 24px', borderRadius: 14, border: 'none',
+                                        background: 'linear-gradient(135deg, #6366f1 0%, #7c3aed 100%)',
+                                        color: 'white', fontSize: 14, fontWeight: 600, cursor: 'pointer',
+                                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                                        boxShadow: '0 4px 14px rgba(99, 102, 241, 0.35)',
+                                        opacity: saving ? 0.7 : 1, transition: 'transform 0.2s, box-shadow 0.2s'
+                                    }}
+                                    onMouseOver={e => { e.currentTarget.style.transform = 'translateY(-1px)'; e.currentTarget.style.boxShadow = '0 6px 20px rgba(99, 102, 241, 0.4)'; }}
+                                    onMouseOut={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = '0 4px 14px rgba(99, 102, 241, 0.35)'; }}
+                                >
+                                    {saving ? (
+                                        <div style={{ width: 18, height: 18, border: '2px solid rgba(255,255,255,0.3)', borderTopColor: 'white', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+                                    ) : (
+                                        <>
+                                            <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                                            </svg>
+                                            Save default reply
+                                        </>
+                                    )}
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* CARD: Post Overrides */}
+                        <div style={{
+                            background: 'white', borderRadius: 20, overflow: 'hidden',
+                            boxShadow: '0 1px 3px rgba(0,0,0,0.04), 0 4px 12px rgba(0,0,0,0.03)',
+                            border: '1px solid rgba(0,0,0,0.04)'
+                        }}>
+                            {/* Card Header */}
+                            <div style={{
+                                padding: '20px 24px', borderBottom: '1px solid #f1f5f9',
+                                display: 'flex', alignItems: 'center', justifyContent: 'space-between'
+                            }}>
+                                <div>
+                                    <h2 style={{ fontSize: 16, fontWeight: 600, color: '#0f172a', margin: 0 }}>Post Overrides</h2>
+                                    <p style={{ fontSize: 12, color: '#94a3b8', margin: '2px 0 0' }}>Custom replies for specific posts</p>
+                                </div>
+                                <button
+                                    onClick={() => setShowCreateOverride(!showCreateOverride)}
+                                    style={{
+                                        padding: '10px 16px', borderRadius: 10, border: 'none',
+                                        background: showCreateOverride ? '#f1f5f9' : '#ede9fe',
+                                        color: showCreateOverride ? '#475569' : '#6366f1',
+                                        fontSize: 13, fontWeight: 600, cursor: 'pointer',
+                                        display: 'flex', alignItems: 'center', gap: 6, transition: 'all 0.2s'
+                                    }}
+                                >
+                                    {showCreateOverride ? (
+                                        <>
+                                            <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                                            </svg>
+                                            Cancel
+                                        </>
+                                    ) : (
+                                        <>
+                                            <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+                                            </svg>
+                                            Add override
+                                        </>
+                                    )}
+                                </button>
+                            </div>
+
+                            {/* Create Override Form */}
+                            {showCreateOverride && (
+                                <div style={{ padding: 24, background: '#fafbfc', borderBottom: '1px solid #f1f5f9' }}>
+                                    <div style={{ marginBottom: 20 }}>
+                                        <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#374151', marginBottom: 8 }}>Rule name</label>
                                         <input
-                                            type="text"
-                                            value={newRule.name}
-                                            onChange={e => setNewRule({ ...newRule, name: e.target.value })}
-                                            placeholder="e.g. Summer Sale"
-                                            className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-lg text-sm focus:border-indigo-500 outline-none"
+                                            type="text" value={newRule.name} onChange={e => setNewRule({ ...newRule, name: e.target.value })}
+                                            placeholder="e.g. Summer Sale Post"
+                                            style={{
+                                                width: '100%', padding: '12px 16px', borderRadius: 12, fontSize: 14,
+                                                border: '1.5px solid #e2e8f0', outline: 'none', background: 'white',
+                                                boxSizing: 'border-box'
+                                            }}
                                         />
                                     </div>
 
-                                    {/* Select Posts */}
-                                    <div>
-                                        <label className="block text-sm font-medium text-slate-700 mb-2">
-                                            Select Posts
-                                            {(newRule.media_ids?.length || 0) > 0 && (
-                                                <span className="ml-2 text-indigo-600 font-normal">
-                                                    ({newRule.media_ids?.length} selected)
-                                                </span>
-                                            )}
+                                    <div style={{ marginBottom: 20 }}>
+                                        <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#374151', marginBottom: 8 }}>
+                                            Select posts {(newRule.media_ids?.length || 0) > 0 && <span style={{ color: '#6366f1', fontWeight: 500 }}>({newRule.media_ids?.length} selected)</span>}
                                         </label>
-                                        <div className="grid grid-cols-5 gap-2 max-h-44 overflow-y-auto bg-white rounded-lg p-2 border border-slate-200">
+                                        <div style={{
+                                            display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(56px, 1fr))', gap: 8,
+                                            maxHeight: 160, overflowY: 'auto', padding: 12, background: 'white',
+                                            borderRadius: 12, border: '1.5px solid #e2e8f0'
+                                        }}>
                                             {media.length === 0 ? (
-                                                <p className="col-span-full text-center text-slate-400 text-sm py-6">No posts available</p>
+                                                <p style={{ gridColumn: '1/-1', textAlign: 'center', color: '#94a3b8', padding: 24, fontSize: 13 }}>No posts available</p>
                                             ) : (
                                                 media.map(m => {
                                                     const selected = newRule.media_ids?.includes(m.id);
                                                     return (
-                                                        <div
-                                                            key={m.id}
-                                                            onClick={() => togglePost(m.id)}
-                                                            className={`relative aspect-square rounded-lg overflow-hidden cursor-pointer transition-all ${selected ? 'ring-2 ring-indigo-500 ring-offset-2' : 'hover:opacity-80'
-                                                                }`}
-                                                        >
-                                                            <img src={m.media_url} className="w-full h-full object-cover" alt="" />
+                                                        <div key={m.id} onClick={() => togglePost(m.id)}
+                                                            style={{
+                                                                aspectRatio: '1', borderRadius: 8, overflow: 'hidden', cursor: 'pointer',
+                                                                position: 'relative', border: selected ? '2px solid #6366f1' : '2px solid transparent',
+                                                                transition: 'border 0.2s'
+                                                            }}>
+                                                            <img src={m.media_url} style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="" />
                                                             {selected && (
-                                                                <div className="absolute inset-0 bg-indigo-500/30 flex items-center justify-center">
-                                                                    <div className="w-6 h-6 rounded-full bg-indigo-600 flex items-center justify-center">
-                                                                        <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                                                                <div style={{
+                                                                    position: 'absolute', inset: 0, background: 'rgba(99,102,241,0.3)',
+                                                                    display: 'flex', alignItems: 'center', justifyContent: 'center'
+                                                                }}>
+                                                                    <div style={{
+                                                                        width: 20, height: 20, borderRadius: '50%', background: '#6366f1',
+                                                                        display: 'flex', alignItems: 'center', justifyContent: 'center'
+                                                                    }}>
+                                                                        <svg width="12" height="12" fill="none" stroke="white" strokeWidth="3" viewBox="0 0 24 24">
+                                                                            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
                                                                         </svg>
                                                                     </div>
                                                                 </div>
@@ -470,223 +568,251 @@ export default function AutomationPage() {
                                         </div>
                                     </div>
 
-                                    {/* Keywords */}
-                                    <div>
-                                        <label className="block text-sm font-medium text-slate-700 mb-2">
-                                            Keywords <span className="text-slate-400 font-normal">(optional - leave empty to trigger on ALL comments)</span>
-                                        </label>
-                                        <div className="flex gap-2 mb-2">
-                                            <input
-                                                type="text"
-                                                value={kwInput}
-                                                onChange={e => setKwInput(e.target.value)}
-                                                onKeyPress={e => e.key === 'Enter' && addKw()}
-                                                placeholder="e.g. price"
-                                                className="flex-1 px-4 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:border-indigo-500 outline-none"
-                                            />
-                                            <button onClick={addKw} className="px-4 py-2 bg-slate-200 hover:bg-slate-300 rounded-lg text-sm text-slate-700">
-                                                Add
-                                            </button>
-                                        </div>
-                                        <div className="flex flex-wrap gap-2">
-                                            {newRule.keywords.length === 0 ? (
-                                                <span className="text-xs text-slate-500">Will trigger on all comments to selected posts</span>
-                                            ) : (
-                                                newRule.keywords.map(k => (
-                                                    <span key={k} className="px-2.5 py-1 bg-indigo-100 text-indigo-700 text-xs rounded-full flex items-center gap-1.5">
-                                                        #{k}
-                                                        <button onClick={() => setNewRule({ ...newRule, keywords: newRule.keywords.filter(x => x !== k) })}>
-                                                            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                                                            </svg>
-                                                        </button>
-                                                    </span>
-                                                ))
-                                            )}
-                                        </div>
-                                    </div>
-
-                                    {/* Replies */}
-                                    <div className="grid sm:grid-cols-2 gap-4">
+                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 20 }}>
                                         <div>
-                                            <label className="block text-sm font-medium text-slate-700 mb-2">Public Reply</label>
-                                            <textarea
-                                                value={newRule.comment_reply}
-                                                onChange={e => setNewRule({ ...newRule, comment_reply: e.target.value })}
-                                                placeholder="Your reply..."
-                                                className="w-full h-20 px-4 py-2.5 bg-white border border-slate-200 rounded-lg text-sm focus:border-indigo-500 outline-none resize-none"
-                                            />
+                                            <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#374151', marginBottom: 8 }}>Comment reply</label>
+                                            <textarea value={newRule.comment_reply} onChange={e => setNewRule({ ...newRule, comment_reply: e.target.value })}
+                                                placeholder="Your reply..." style={{
+                                                    width: '100%', minHeight: 80, padding: '12px 14px', borderRadius: 12,
+                                                    border: '1.5px solid #e2e8f0', fontSize: 14, resize: 'vertical', outline: 'none',
+                                                    boxSizing: 'border-box'
+                                                }} />
                                         </div>
                                         <div>
-                                            <div className="flex items-center justify-between mb-2">
-                                                <label className="text-sm font-medium text-slate-700">Private DM</label>
-                                                <button
-                                                    onClick={() => setNewRule({ ...newRule, send_dm: !newRule.send_dm })}
-                                                    className={`text-xs px-2 py-1 rounded ${newRule.send_dm ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-100 text-slate-500'}`}
-                                                >
-                                                    {newRule.send_dm ? 'On' : 'Off'}
-                                                </button>
-                                            </div>
-                                            {newRule.send_dm && (
-                                                <textarea
-                                                    value={newRule.dm_reply}
-                                                    onChange={e => setNewRule({ ...newRule, dm_reply: e.target.value })}
-                                                    placeholder="Your DM..."
-                                                    className="w-full h-20 px-4 py-2.5 bg-white border border-slate-200 rounded-lg text-sm focus:border-indigo-500 outline-none resize-none"
-                                                />
-                                            )}
+                                            <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#374151', marginBottom: 8 }}>Private DM</label>
+                                            <textarea value={newRule.dm_reply} onChange={e => setNewRule({ ...newRule, dm_reply: e.target.value })}
+                                                placeholder="DM message..." style={{
+                                                    width: '100%', minHeight: 80, padding: '12px 14px', borderRadius: 12,
+                                                    border: '1.5px solid #e2e8f0', fontSize: 14, resize: 'vertical', outline: 'none',
+                                                    boxSizing: 'border-box'
+                                                }} />
                                         </div>
                                     </div>
 
-                                    {/* Create Button */}
-                                    <div className="flex justify-end gap-3 pt-2">
-                                        <button onClick={() => setShowCreate(false)} className="px-4 py-2 text-sm text-slate-500 hover:text-slate-700">
-                                            Cancel
-                                        </button>
-                                        <button
-                                            onClick={createOverride}
-                                            disabled={saving}
-                                            className="px-5 py-2.5 rounded-lg font-medium text-sm bg-indigo-600 hover:bg-indigo-700 text-white disabled:opacity-50 flex items-center gap-2"
-                                        >
-                                            {saving && <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
-                                            Create Override
-                                        </button>
+                                    <button onClick={createOverride} disabled={saving}
+                                        style={{
+                                            width: '100%', padding: '12px 24px', borderRadius: 12, border: 'none',
+                                            background: '#6366f1', color: 'white', fontSize: 14, fontWeight: 600,
+                                            cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8
+                                        }}>
+                                        {saving && <div style={{ width: 16, height: 16, border: '2px solid rgba(255,255,255,0.3)', borderTopColor: 'white', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />}
+                                        Create override
+                                    </button>
+                                </div>
+                            )}
+
+                            {/* Overrides List */}
+                            <div>
+                                {specificRules.length === 0 ? (
+                                    <div style={{ padding: '48px 24px', textAlign: 'center' }}>
+                                        <div style={{
+                                            width: 56, height: 56, margin: '0 auto 16px', borderRadius: 16,
+                                            background: '#f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'center'
+                                        }}>
+                                            <svg width="24" height="24" fill="none" stroke="#94a3b8" strokeWidth="1.5" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                            </svg>
+                                        </div>
+                                        <p style={{ fontSize: 15, fontWeight: 600, color: '#374151', margin: 0 }}>No overrides yet</p>
+                                        <p style={{ fontSize: 13, color: '#94a3b8', margin: '6px 0 0' }}>Create custom replies for specific posts</p>
                                     </div>
-                                </div>
-                            </div>
-                        )}
-
-                        {/* Existing Overrides */}
-                        {specificRules.length === 0 && !showCreate ? (
-                            <div className="text-center py-12">
-                                <div className="w-14 h-14 mx-auto mb-4 rounded-2xl bg-slate-100 flex items-center justify-center">
-                                    <svg className="w-6 h-6 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                                    </svg>
-                                </div>
-                                <p className="text-slate-600 mb-1 font-medium">No overrides yet</p>
-                                <p className="text-slate-400 text-sm mb-4">Create one to customize replies for specific posts</p>
-                                <button
-                                    onClick={() => setShowCreate(true)}
-                                    className="text-sm text-indigo-600 hover:text-indigo-700 font-medium"
-                                >
-                                    + Add your first override
-                                </button>
-                            </div>
-                        ) : (
-                            <div className="space-y-3">
-                                {specificRules.map(rule => {
-                                    const expanded = expandedId === rule.id;
-                                    const thumbs: string[] = [];
-                                    if (rule.media_id) {
-                                        const m = media.find(x => x.id === rule.media_id);
-                                        if (m) thumbs.push(m.media_url);
-                                    }
-                                    rule.media_ids?.forEach(id => {
-                                        const m = media.find(x => x.id === id);
-                                        if (m && !thumbs.includes(m.media_url)) thumbs.push(m.media_url);
-                                    });
-
-                                    return (
-                                        <div key={rule.id} className="rounded-xl bg-slate-50 border border-slate-200 overflow-hidden">
-                                            <div
-                                                onClick={() => setExpandedId(expanded ? null : rule.id || null)}
-                                                className="px-4 py-3 flex items-center justify-between cursor-pointer hover:bg-slate-100 transition-colors"
-                                            >
-                                                <div className="flex items-center gap-3">
-                                                    <div className="flex -space-x-2">
-                                                        {thumbs.slice(0, 3).map((url, i) => (
-                                                            <img key={i} src={url} className="w-10 h-10 rounded-lg border-2 border-white object-cover shadow-sm" alt="" />
+                                ) : (
+                                    specificRules.map(rule => {
+                                        const expanded = expandedOverride === rule.id;
+                                        const thumbs = rule.media_ids?.map(id => media.find(x => x.id === id)?.media_url).filter(Boolean).slice(0, 3) || [];
+                                        return (
+                                            <div key={rule.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                                                <div onClick={() => setExpandedOverride(expanded ? null : rule.id || null)}
+                                                    style={{
+                                                        padding: '16px 24px', display: 'flex', alignItems: 'center', gap: 16,
+                                                        cursor: 'pointer', transition: 'background 0.2s'
+                                                    }}
+                                                    onMouseOver={e => e.currentTarget.style.background = '#fafbfc'}
+                                                    onMouseOut={e => e.currentTarget.style.background = 'transparent'}>
+                                                    <div style={{ display: 'flex', marginLeft: -4 }}>
+                                                        {thumbs.map((url, i) => (
+                                                            <img key={i} src={url} style={{
+                                                                width: 40, height: 40, borderRadius: 8, objectFit: 'cover',
+                                                                border: '2px solid white', marginLeft: i > 0 ? -12 : 0
+                                                            }} alt="" />
                                                         ))}
-                                                        {thumbs.length > 3 && (
-                                                            <div className="w-10 h-10 rounded-lg bg-slate-200 border-2 border-white flex items-center justify-center text-xs text-slate-500">
-                                                                +{thumbs.length - 3}
-                                                            </div>
-                                                        )}
                                                     </div>
-                                                    <div>
-                                                        <div className="flex items-center gap-2">
-                                                            <span className="text-sm font-medium text-slate-900">{rule.name}</span>
-                                                            <span className={`text-xs px-2 py-0.5 rounded-full ${rule.is_active ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-500'
-                                                                }`}>
-                                                                {rule.is_active ? 'Active' : 'Off'}
-                                                            </span>
+                                                    <div style={{ flex: 1, minWidth: 0 }}>
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                                            <span style={{ fontSize: 14, fontWeight: 600, color: '#0f172a' }}>{rule.name}</span>
+                                                            <span style={{
+                                                                fontSize: 11, padding: '3px 8px', borderRadius: 6, fontWeight: 500,
+                                                                background: rule.is_active ? '#d1fae5' : '#f1f5f9',
+                                                                color: rule.is_active ? '#059669' : '#64748b'
+                                                            }}>{rule.is_active ? 'Active' : 'Off'}</span>
                                                         </div>
-                                                        <p className="text-xs text-slate-500 mt-0.5">
-                                                            {rule.keywords?.length ? rule.keywords.map(k => `#${k}`).join(' ') : 'All comments'}
+                                                        <p style={{ fontSize: 12, color: '#94a3b8', margin: '2px 0 0' }}>
+                                                            {rule.keywords?.length ? `Keywords: ${rule.keywords.join(', ')}` : 'All comments'}
                                                         </p>
                                                     </div>
+                                                    <svg width="16" height="16" fill="none" stroke="#94a3b8" strokeWidth="2" viewBox="0 0 24 24"
+                                                        style={{ transform: expanded ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}>
+                                                        <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                                                    </svg>
                                                 </div>
-                                                <svg className={`w-4 h-4 text-slate-400 transition-transform ${expanded ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                                                </svg>
-                                            </div>
-
-                                            {expanded && (
-                                                <div className="px-4 py-4 border-t border-slate-200 bg-white space-y-4">
-                                                    <div className="grid sm:grid-cols-2 gap-4">
-                                                        <div>
-                                                            <label className="block text-xs font-medium text-slate-500 mb-1">Public Reply</label>
-                                                            <textarea
-                                                                value={rule.comment_reply}
-                                                                onChange={e => setRules(rules.map(r => r.id === rule.id ? { ...r, comment_reply: e.target.value } : r))}
-                                                                className="w-full h-20 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:border-indigo-500 outline-none resize-none"
-                                                            />
-                                                        </div>
-                                                        <div>
-                                                            <div className="flex items-center justify-between mb-1">
-                                                                <label className="text-xs font-medium text-slate-500">Private DM</label>
-                                                                <button
-                                                                    onClick={() => setRules(rules.map(r => r.id === rule.id ? { ...r, send_dm: !r.send_dm } : r))}
-                                                                    className={`text-xs ${rule.send_dm ? 'text-indigo-600' : 'text-slate-400'}`}
-                                                                >
-                                                                    {rule.send_dm ? '✓ On' : 'Off'}
-                                                                </button>
+                                                {expanded && (
+                                                    <div style={{ padding: '16px 24px', background: '#fafbfc', borderTop: '1px solid #f1f5f9' }}>
+                                                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
+                                                            <div>
+                                                                <span style={{ fontSize: 11, color: '#94a3b8', textTransform: 'uppercase', fontWeight: 600 }}>Comment Reply</span>
+                                                                <p style={{ fontSize: 13, color: '#374151', margin: '6px 0 0' }}>{rule.comment_reply}</p>
                                                             </div>
-                                                            <textarea
-                                                                value={rule.dm_reply}
-                                                                onChange={e => setRules(rules.map(r => r.id === rule.id ? { ...r, dm_reply: e.target.value } : r))}
-                                                                disabled={!rule.send_dm}
-                                                                className={`w-full h-20 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none resize-none ${rule.send_dm ? 'focus:border-indigo-500' : 'text-slate-400'}`}
-                                                            />
+                                                            {rule.send_dm && (
+                                                                <div>
+                                                                    <span style={{ fontSize: 11, color: '#94a3b8', textTransform: 'uppercase', fontWeight: 600 }}>Private DM</span>
+                                                                    <p style={{ fontSize: 13, color: '#374151', margin: '6px 0 0' }}>{rule.dm_reply}</p>
+                                                                </div>
+                                                            )}
                                                         </div>
-                                                    </div>
-                                                    <div className="flex items-center justify-between pt-2 border-t border-slate-100">
-                                                        <div className="flex items-center gap-4">
-                                                            <button
-                                                                onClick={() => {
-                                                                    const updatedRule = { ...rule, is_active: !rule.is_active };
-                                                                    setRules(rules.map(r => r.id === rule.id ? updatedRule : r));
-                                                                    updateOverride(updatedRule);
-                                                                }}
-                                                                className="text-xs text-slate-500 hover:text-slate-700"
-                                                            >
-                                                                {rule.is_active ? 'Disable' : 'Enable'}
-                                                            </button>
-                                                            <button onClick={() => deleteRule(rule.id!)} className="text-xs text-red-500 hover:text-red-600 flex items-center gap-1">
-                                                                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                                                </svg>
-                                                                Delete
-                                                            </button>
-                                                        </div>
-                                                        <button
-                                                            onClick={() => updateOverride(rule)}
-                                                            className="px-4 py-1.5 rounded-lg text-xs font-medium bg-indigo-600 hover:bg-indigo-700 text-white"
-                                                        >
-                                                            Save Changes
+                                                        <button onClick={() => deleteRule(rule.id!)}
+                                                            style={{
+                                                                background: 'none', border: 'none', cursor: 'pointer', padding: 0,
+                                                                fontSize: 13, fontWeight: 500, color: '#ef4444', display: 'flex', alignItems: 'center', gap: 6
+                                                            }}>
+                                                            <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                                                                <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                                            </svg>
+                                                            Delete
                                                         </button>
                                                     </div>
-                                                </div>
-                                            )}
-                                        </div>
-                                    );
-                                })}
+                                                )}
+                                            </div>
+                                        );
+                                    })
+                                )}
                             </div>
-                        )}
+                        </div>
+                    </div>
+
+                    {/* RIGHT COLUMN - Live Preview */}
+                    <div style={{ width: 340, flexShrink: 0, position: 'sticky', top: 24, alignSelf: 'flex-start' }}>
+                        <div style={{
+                            background: 'white', borderRadius: 20, overflow: 'hidden',
+                            boxShadow: '0 1px 3px rgba(0,0,0,0.04), 0 4px 12px rgba(0,0,0,0.03)',
+                            border: '1px solid rgba(0,0,0,0.04)'
+                        }}>
+                            {/* Preview Header */}
+                            <div style={{
+                                padding: '16px 20px', borderBottom: '1px solid #f1f5f9',
+                                background: 'linear-gradient(135deg, #faf5ff 0%, #ede9fe 100%)'
+                            }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                    <svg width="16" height="16" fill="none" stroke="#7c3aed" strokeWidth="2" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                        <path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                                    </svg>
+                                    <span style={{ fontSize: 14, fontWeight: 600, color: '#5b21b6' }}>Live Preview</span>
+                                </div>
+                                <p style={{ fontSize: 12, color: '#7c3aed', margin: '4px 0 0', opacity: 0.8 }}>How your auto-reply will appear</p>
+                            </div>
+
+                            {/* Preview Content */}
+                            <div style={{ padding: 20 }}>
+                                {/* Incoming Comment */}
+                                <div style={{ marginBottom: 16 }}>
+                                    <span style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.5px', color: '#94a3b8', fontWeight: 600 }}>Incoming Comment</span>
+                                    <div style={{ marginTop: 10, display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+                                        <div style={{
+                                            width: 36, height: 36, borderRadius: '50%', flexShrink: 0,
+                                            background: 'linear-gradient(135deg, #f472b6 0%, #fb923c 100%)'
+                                        }} />
+                                        <div style={{
+                                            flex: 1, padding: '10px 14px', background: '#f1f5f9',
+                                            borderRadius: '16px 16px 16px 4px'
+                                        }}>
+                                            <p style={{ fontSize: 12, fontWeight: 600, color: '#475569', margin: 0 }}>@user_example</p>
+                                            <p style={{ fontSize: 13, color: '#1e293b', margin: '4px 0 0' }}>
+                                                {defaultRule.keywords.length > 0 ? (
+                                                    <>Hey, what's the <span style={{ background: '#fef08a', padding: '1px 4px', borderRadius: 4 }}>{defaultRule.keywords[0]}</span>?</>
+                                                ) : 'Hey, interested in this!'}
+                                            </p>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Divider */}
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 12, margin: '16px 0' }}>
+                                    <div style={{ flex: 1, height: 1, background: '#e2e8f0' }} />
+                                    <svg width="14" height="14" fill="none" stroke="#94a3b8" strokeWidth="2" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" d="M19 14l-7 7m0 0l-7-7m7 7V3" />
+                                    </svg>
+                                    <div style={{ flex: 1, height: 1, background: '#e2e8f0' }} />
+                                </div>
+
+                                {/* Your Reply */}
+                                <div style={{ marginBottom: 16 }}>
+                                    <span style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.5px', color: '#94a3b8', fontWeight: 600 }}>Your Reply</span>
+                                    <div style={{ marginTop: 10, display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+                                        <div style={{
+                                            width: 36, height: 36, borderRadius: '50%', flexShrink: 0,
+                                            background: 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)'
+                                        }} />
+                                        <div style={{
+                                            flex: 1, padding: '10px 14px', background: '#ede9fe',
+                                            borderRadius: '16px 16px 16px 4px', border: '1px solid #ddd6fe'
+                                        }}>
+                                            <p style={{ fontSize: 12, fontWeight: 600, color: '#6366f1', margin: 0 }}>@your_account</p>
+                                            <p style={{ fontSize: 13, color: '#1e293b', margin: '4px 0 0' }}>
+                                                {defaultRule.comment_reply || <span style={{ color: '#94a3b8', fontStyle: 'italic' }}>Enter a reply above...</span>}
+                                            </p>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* DM Preview */}
+                                {defaultRule.send_dm && (
+                                    <>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '16px 0' }}>
+                                            <div style={{ flex: 1, height: 1, background: '#e2e8f0' }} />
+                                            <span style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.5px', color: '#94a3b8', fontWeight: 600 }}>+ Private DM</span>
+                                            <div style={{ flex: 1, height: 1, background: '#e2e8f0' }} />
+                                        </div>
+
+                                        <div style={{
+                                            padding: 16, borderRadius: 14,
+                                            background: 'linear-gradient(135deg, #faf5ff 0%, #fdf4ff 100%)',
+                                            border: '1px solid #ede9fe'
+                                        }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+                                                <svg width="14" height="14" fill="none" stroke="#9333ea" strokeWidth="2" viewBox="0 0 24 24">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                                                </svg>
+                                                <span style={{ fontSize: 12, fontWeight: 600, color: '#9333ea' }}>Direct Message</span>
+                                            </div>
+                                            <p style={{ fontSize: 13, color: '#374151', margin: 0 }}>
+                                                {defaultRule.dm_reply || <span style={{ color: '#94a3b8', fontStyle: 'italic' }}>Enter a DM message...</span>}
+                                            </p>
+                                        </div>
+                                    </>
+                                )}
+
+                                {/* Status */}
+                                <div style={{
+                                    marginTop: 20, padding: '10px 14px', borderRadius: 10,
+                                    background: defaultRule.is_active ? '#d1fae5' : '#f1f5f9',
+                                    display: 'flex', alignItems: 'center', gap: 8
+                                }}>
+                                    <div style={{
+                                        width: 8, height: 8, borderRadius: '50%',
+                                        background: defaultRule.is_active ? '#10b981' : '#94a3b8',
+                                        boxShadow: defaultRule.is_active ? '0 0 6px rgba(16, 185, 129, 0.5)' : 'none'
+                                    }} />
+                                    <span style={{ fontSize: 12, fontWeight: 600, color: defaultRule.is_active ? '#059669' : '#64748b' }}>
+                                        {defaultRule.is_active ? 'Auto-reply is active' : 'Auto-reply is off'}
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
+
+            <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
         </div>
     );
 }

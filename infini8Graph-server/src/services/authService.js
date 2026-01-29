@@ -206,6 +206,9 @@ export async function createOrUpdateUser(instagramData, accessToken, expiresIn) 
 
         if (existingAccount) {
             instagramAccountId = existingAccount.id;
+            // Encrypt Page Token for secure storage (used for DMs)
+            const encryptedPageToken = instagramData.pageToken ? encrypt(instagramData.pageToken) : null;
+
             await supabase
                 .from('instagram_accounts')
                 .update({
@@ -219,11 +222,15 @@ export async function createOrUpdateUser(instagramData, accessToken, expiresIn) 
                     biography: instagramData.biography,
                     website: instagramData.website,
                     facebook_page_id: instagramData.pageId, // Store Page ID for messaging
+                    page_access_token: encryptedPageToken, // Store encrypted Page Token for DMs
                     is_active: true,
                     updated_at: new Date().toISOString()
                 })
                 .eq('id', instagramAccountId);
         } else {
+            // Encrypt Page Token for secure storage (used for DMs)
+            const encryptedPageToken = instagramData.pageToken ? encrypt(instagramData.pageToken) : null;
+
             const { data: newAccount, error: createAccountError } = await supabase
                 .from('instagram_accounts')
                 .insert({
@@ -238,6 +245,7 @@ export async function createOrUpdateUser(instagramData, accessToken, expiresIn) 
                     biography: instagramData.biography,
                     website: instagramData.website,
                     facebook_page_id: instagramData.pageId, // Store Page ID for messaging
+                    page_access_token: encryptedPageToken, // Store encrypted Page Token for DMs
                     is_active: true
                 })
                 .select('id')

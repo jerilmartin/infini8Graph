@@ -52,12 +52,11 @@ export async function callback(req, res) {
         const instagramData = await authService.getInstagramBusinessAccount(tokenData.accessToken);
 
         // Create or update user and get JWT
-        // Important: We prefer the Page Access Token if it's available because it's required for DMs
-        const tokenToStore = instagramData.pageToken || tokenData.accessToken;
-
+        // IMPORTANT: Store the USER Access Token in auth_tokens (required for ads_read and user-level APIs)
+        // The Page Access Token is stored separately on the instagram_account for messaging
         const userData = await authService.createOrUpdateUser(
             instagramData,
-            tokenToStore,
+            tokenData.accessToken,  // User token for ads access
             tokenData.expiresIn
         );
 
