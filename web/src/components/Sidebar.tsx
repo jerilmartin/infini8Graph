@@ -24,7 +24,8 @@ import {
     ChevronDown,
     Check,
     Plus,
-    Globe
+    Globe,
+    BarChart2
 } from 'lucide-react';
 
 const navSections = [
@@ -44,7 +45,8 @@ const navSections = [
     {
         title: 'Advertising',
         items: [
-            { href: '/ads', icon: Megaphone, label: 'Ads' },
+            { href: '/ads', icon: Megaphone, label: 'Meta Ads' },
+            { href: '/google-ads', icon: BarChart2, label: 'Google Ads' },
         ]
     },
     {
@@ -84,7 +86,6 @@ export default function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
     };
 
     const handleAddAccount = () => {
-        // Redirect to login to add another account
         login();
     };
 
@@ -106,21 +107,41 @@ export default function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
             />
 
             {/* Sidebar */}
-            <aside className={`sidebar ${isCollapsed ? 'collapsed' : ''} ${!isCollapsed ? 'open' : ''}`}>
+            <aside 
+                className={`sidebar ${isCollapsed ? 'collapsed' : ''} ${!isCollapsed ? 'open' : ''}`}
+                onClick={isCollapsed ? onToggle : undefined}
+                style={{ cursor: isCollapsed ? 'pointer' : 'default' }}
+            >
                 {/* Header */}
-                <div className="sidebar-header">
-                    <Link href="/dashboard" style={{ display: 'flex', alignItems: 'center', gap: 10, textDecoration: 'none', color: 'inherit' }}>
+                <div 
+                    className="sidebar-header" 
+                    style={{ 
+                        flexDirection: isCollapsed ? 'column' : 'row',
+                        gap: isCollapsed ? 16 : 0,
+                        justifyContent: isCollapsed ? 'center' : 'space-between',
+                        padding: isCollapsed ? '20px 0' : 'var(--space-4)'
+                    }}
+                >
+                    <Link href="/dashboard" style={{ 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        gap: 10, 
+                        textDecoration: 'none', 
+                        color: 'inherit',
+                        justifyContent: 'center'
+                    }}>
                         <div style={{
                             width: 32,
                             height: 32,
                             borderRadius: 8,
-                            background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
+                            background: 'linear-gradient(135deg, #5b5ce2 0%, #7c5cff 100%)',
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'center',
-                            color: 'white',
+                            color: '#ffffff',
                             fontWeight: 700,
-                            fontSize: 16
+                            fontSize: 16,
+                            boxShadow: '0 10px 24px rgba(96,91,255,0.22)'
                         }}>
                             ∞
                         </div>
@@ -130,7 +151,10 @@ export default function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
                     </Link>
 
                     <button
-                        onClick={onToggle}
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            onToggle();
+                        }}
                         style={{
                             padding: 6,
                             background: 'transparent',
@@ -138,10 +162,12 @@ export default function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
                             color: 'var(--sidebar-muted)',
                             cursor: 'pointer',
                             borderRadius: 4,
-                            display: isCollapsed ? 'none' : 'flex'
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center'
                         }}
                     >
-                        <ChevronLeft size={18} />
+                        {isCollapsed ? <Menu size={18} /> : <ChevronLeft size={18} />}
                     </button>
                 </div>
 
@@ -153,13 +179,15 @@ export default function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
                             className="account-card"
                             style={{
                                 width: '100%',
-                                border: 'none',
                                 cursor: 'pointer',
                                 textAlign: 'left',
-                                transition: 'background 0.15s ease'
+                                transition: 'background 0.15s ease',
+                                borderRadius: 16,
+                                border: '1px solid rgba(255,255,255,0.06)',
+                                background: 'linear-gradient(180deg, rgba(255,255,255,0.035), rgba(255,255,255,0.02))'
                             }}
-                            onMouseOver={(e) => e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)'}
-                            onMouseOut={(e) => e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)'}
+                            onMouseOver={(e) => e.currentTarget.style.background = 'rgba(255, 255, 255, 0.07)'}
+                            onMouseOut={(e) => e.currentTarget.style.background = 'linear-gradient(180deg, rgba(255,255,255,0.035), rgba(255,255,255,0.02))'}
                         >
                             <div className="account-avatar">
                                 {activeAccount?.profile_picture_url ? (
@@ -199,19 +227,20 @@ export default function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
                                     left: 12,
                                     right: 12,
                                     marginTop: 4,
-                                    background: 'var(--color-gray-800)',
+                                    background: 'rgba(11,16,32,0.98)',
                                     border: '1px solid var(--sidebar-border)',
                                     borderRadius: 'var(--radius-lg)',
                                     padding: 'var(--space-2)',
                                     zIndex: 100,
-                                    boxShadow: '0 10px 25px rgba(0,0,0,0.3)'
+                                    boxShadow: '0 18px 40px rgba(0,0,0,0.35)',
+                                    backdropFilter: 'blur(18px)'
                                 }}
                             >
                                 <div style={{ fontSize: 11, color: 'var(--sidebar-muted)', padding: '6px 10px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
                                     Switch Account
                                 </div>
 
-                                {accounts.map(account => (
+                                {accounts.map((account: any) => (
                                     <button
                                         key={account.id}
                                         onClick={() => handleSwitchAccount(account.id)}
@@ -244,7 +273,7 @@ export default function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
                                                 width: 32,
                                                 height: 32,
                                                 borderRadius: '50%',
-                                                background: account.profile_picture_url ? 'transparent' : 'linear-gradient(135deg, #ec4899, #f97316)',
+                                                background: account.profile_picture_url ? 'transparent' : 'linear-gradient(135deg, #6366f1, #8b5cf6)',
                                                 display: 'flex',
                                                 alignItems: 'center',
                                                 justifyContent: 'center',

@@ -86,8 +86,37 @@ export async function getReels(req, res) {
 
 export async function getPosts(req, res) {
     try {
-        const { limit = 50 } = req.query;
+        const { limit = 50, includeCollabs = 'false' } = req.query;
         const analytics = await getAnalyticsService(req);
+        
+        // Don't include collabs since webhooks don't work for them
+        if (includeCollabs === 'true') {
+            const result = await analytics.instagram.getAllMediaIncludingCollabs(parseInt(limit));
+            // Filter out collaboration posts since webhooks don't work for them
+            const ownedOnly = result.data.filter(p => !p.is_collaboration);
+            return res.json({ 
+                success: true, 
+                data: {
+                    all: ownedOnly.map(p => ({
+                        id: p.id,
+                        media_type: p.media_type,
+                        caption: p.caption || '',
+                        media_url: p.media_url,
+                        thumbnail: p.thumbnail_url || p.media_url,
+                        permalink: p.permalink,
+                        timestamp: p.timestamp,
+                        like_count: p.like_count || 0,
+                        comments_count: p.comments_count || 0,
+                        is_collaboration: false
+                    })),
+                    owned_count: ownedOnly.length,
+                    collab_count: 0,
+                    total: ownedOnly.length
+                }
+            });
+        }
+        
+        // Otherwise use the standard analytics method
         const data = await analytics.getPostsAnalytics(parseInt(limit));
         res.json({ success: true, data });
     } catch (error) {

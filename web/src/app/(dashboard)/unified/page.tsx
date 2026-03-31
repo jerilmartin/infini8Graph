@@ -29,16 +29,17 @@ function InfoTooltip({ text }: { text: string }) {
                     bottom: '100%',
                     left: '50%',
                     transform: 'translateX(-50%)',
-                    background: '#1e293b',
+                    background: 'rgba(16,17,26,0.98)',
                     color: 'white',
                     padding: '8px 12px',
-                    borderRadius: 6,
+                    borderRadius: 10,
                     fontSize: 12,
                     width: 200,
                     zIndex: 100,
                     marginBottom: 6,
                     lineHeight: 1.5,
-                    boxShadow: '0 4px 12px rgba(0,0,0,0.2)'
+                    border: '1px solid rgba(255,255,255,0.06)',
+                    boxShadow: '0 16px 36px rgba(0,0,0,0.32)'
                 }}>
                     {text}
                 </div>
@@ -57,7 +58,7 @@ function MetricCard({ label, value, icon: Icon, color, tooltip }: {
     tooltip?: string;
 }) {
     return (
-        <div className="metric-card" style={{ padding: 20 }}>
+        <div className="metric-card" style={{ padding: 20, background: 'linear-gradient(180deg, rgba(255,255,255,0.028), rgba(255,255,255,0.012)), rgba(16,17,26,0.94)' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
                 <div className="metric-icon" style={{ background: `${color}15`, color, width: 40, height: 40, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                     <Icon size={20} />
@@ -78,7 +79,7 @@ function SectionCard({ title, subtitle, children }: {
     title: string; subtitle?: string; children: React.ReactNode
 }) {
     return (
-        <div className="card" style={{ marginBottom: 20, padding: 24 }}>
+        <div className="card" style={{ marginBottom: 20, padding: 24, background: 'linear-gradient(180deg, rgba(255,255,255,0.028), rgba(255,255,255,0.012)), rgba(16,17,26,0.94)' }}>
             <div className="card-header" style={{ marginBottom: 20, borderBottom: 'none', padding: 0 }}>
                 <div>
                     <h3 style={{ fontSize: 16, fontWeight: 600 }}>{title}</h3>
@@ -206,7 +207,7 @@ export default function UnifiedDashboardPage() {
                     onClick={() => refetch()}
                     disabled={isFetching}
                     className="btn btn-secondary"
-                    style={{ background: 'white', border: '1px solid var(--border)', borderRadius: 10, padding: '10px 18px', display: 'flex', alignItems: 'center', gap: 8, fontWeight: 500 }}
+                    style={{ background: 'var(--card-raised)', border: '1px solid var(--border)', borderRadius: 10, padding: '10px 18px', display: 'flex', alignItems: 'center', gap: 8, fontWeight: 500 }}
                 >
                     <RefreshCw size={16} className={isFetching ? 'animate-spin' : ''} />
                     Refresh All
@@ -278,7 +279,7 @@ export default function UnifiedDashboardPage() {
                                 <YAxis stroke="var(--muted)" fontSize={11} tickLine={false} axisLine={false} width={40} />
                                 <Tooltip
                                     contentStyle={{
-                                        background: 'white',
+                                        background: 'var(--card-raised)',
                                         border: '1px solid var(--border)',
                                         borderRadius: 12,
                                         boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)',
@@ -346,9 +347,9 @@ export default function UnifiedDashboardPage() {
                                         <div style={{
                                             height: '100%',
                                             width: `${percentage}%`,
-                                            background: i === 0 ? 'var(--primary)' : `var(--color-purple-${500 - (i * 100)})`,
-                                            borderRadius: 4
-                                        }} />
+                                        background: i === 0 ? 'var(--primary)' : 'rgba(129, 140, 248, 0.75)',
+                                        borderRadius: 4
+                                    }} />
                                     </div>
                                     {!isCurrent && (
                                         <div style={{ fontSize: 11, color: 'var(--primary)', fontWeight: 600, marginTop: 4, textAlign: 'right', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 4 }}>

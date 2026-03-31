@@ -206,57 +206,87 @@ class AutoReplyService {
      */
     async getAutomationRules(instagramAccountId, currentMediaId = null) {
         try {
-            // Fetch ALL active rules for this account
+            console.log(`   │  🔍 FETCHING AUTOMATION RULES`);
+            console.log(`   │     Account ID : ${instagramAccountId}`);
+            console.log(`   │     Media ID   : ${currentMediaId || '(none)'}`);
+            
+            // Fetch ALL rules for this account (both active general + active specific)
+            // We intentionally do NOT filter by is_active at the top level
+            // because general and specific rules are independent entities.
             const { data: allRules, error } = await supabase
                 .from('automation_rules')
                 .select('*')
-                .eq('instagram_account_id', instagramAccountId)
-                .eq('is_active', true);
+                .eq('instagram_account_id', instagramAccountId);
 
-            if (error || !allRules || allRules.length === 0) {
+            if (error) {
+                console.log(`   │     ❌ Database error: ${error.message}`);
                 return null;
             }
 
-            // Filter for matching rules
-            const applicableRules = allRules.filter(rule => {
-                // 1. General Rule (Application to all posts)
-                if (!rule.media_id && (!rule.media_ids || rule.media_ids.length === 0)) {
-                    return true;
-                }
+            if (!allRules || allRules.length === 0) {
+                console.log(`   │     📭 No rules found in database`);
+                return null;
+            }
 
-                // 2. Specific Post Rule (Single ID)
-                if (rule.media_id === currentMediaId) {
-                    return true;
-                }
+            console.log(`   │     ✅ Found ${allRules.length} total rule(s) in database`);
 
-                // 3. Specific Post Rule (Multiple IDs)
-                if (rule.media_ids && Array.isArray(rule.media_ids) && rule.media_ids.includes(currentMediaId)) {
-                    return true;
-                }
-
-                return false;
+            // Log all rules for debugging
+            allRules.forEach((rule, idx) => {
+                console.log(`   │     Rule ${idx + 1}: "${rule.name}" | Active: ${rule.is_active} | media_ids: ${JSON.stringify(rule.media_ids)} | media_id: ${rule.media_id || 'null'}`);
             });
 
-            if (applicableRules.length === 0) return null;
+            // Separate rules into specific (post override) and general
+            const specificRules = allRules.filter(rule =>
+                rule.is_active &&
+                (rule.media_id === currentMediaId ||
+                    (rule.media_ids && Array.isArray(rule.media_ids) && rule.media_ids.includes(currentMediaId)))
+            );
 
-            // Sort by specificity (Specific posts > General)
-            applicableRules.sort((a, b) => {
-                const aIsSpecific = a.media_id || (a.media_ids && a.media_ids.length > 0);
-                const bIsSpecific = b.media_id || (b.media_ids && b.media_ids.length > 0);
-                if (aIsSpecific && !bIsSpecific) return -1; // a comes first
-                if (!aIsSpecific && bIsSpecific) return 1;  // b comes first
-                return 0;
+            console.log(`   │     🔎 Checking for post-specific overrides matching media: ${currentMediaId}`);
+            console.log(`   │     Found ${specificRules.length} matching active override(s)`);
+
+            // If there are active specific rules for this post, use ONLY those.
+            // The general rule is completely excluded for posts with overrides.
+            if (specificRules.length > 0) {
+                console.log(`   │  📋 ${specificRules.length} post-specific override(s) found for media ${currentMediaId}. General rule excluded.`);
+                specificRules.forEach(r => {
+                    console.log(`   │     ✅ Using override: "${r.name}"`);
+                });
+                return specificRules.map(r => ({
+                    keywords: r.keywords,
+                    reply: r.comment_reply,
+                    dmReply: r.dm_reply,
+                    sendDM: r.send_dm,
+                    priority: 1,
+                    name: r.name
+                }));
+            }
+
+            // No specific overrides for this post — fall back to the general rule (if active)
+            const generalRules = allRules.filter(rule =>
+                rule.is_active &&
+                !rule.media_id &&
+                (!rule.media_ids || rule.media_ids.length === 0)
+            );
+
+            console.log(`   │     🔎 No post overrides found, checking for general rule`);
+            console.log(`   │     Found ${generalRules.length} active general rule(s)`);
+
+            if (generalRules.length === 0) {
+                console.log(`   │  📭 No active general rule and no post overrides for media ${currentMediaId}. Skipping.`);
+                return null;
+            }
+
+            console.log(`   │  📋 Using general rule for media ${currentMediaId} (no post-specific override found).`);
+            generalRules.forEach(r => {
+                console.log(`   │     ✅ Using general: "${r.name}"`);
             });
-
-            console.log(`   │  📋 ${applicableRules.length} matching rule(s) for media ${currentMediaId || 'all posts'}`);
-
-            return applicableRules.map(r => ({
+            return generalRules.map(r => ({
                 keywords: r.keywords,
                 reply: r.comment_reply,
                 dmReply: r.dm_reply,
                 sendDM: r.send_dm,
-                // Assign priority: 1 for specific, 2 for general
-                priority: (r.media_id || (r.media_ids && r.media_ids.length > 0)) ? 1 : 2,
+                priority: 2,
                 name: r.name
             }));
 
@@ -516,11 +546,12 @@ class AutoReplyService {
                 let rules = await this.getAutomationRules(tokenData.instagramAccountId, mediaId);
 
                 if (!rules || rules.length === 0) {
-                    rules = this.commentRules;
-                    console.log(`   │  Using default rules`);
-                } else {
-                    console.log(`   │  Using ${rules.length} custom rule(s)`);
+                    console.log(`   │  📭 No active rules for this post/account. Skipping.`);
+                    console.log(`   └─ END`);
+                    continue;
                 }
+
+                console.log(`   │  Using ${rules.length} custom rule(s)`);
 
                 const rule = this.findMatchingRule(text, rules);
                 if (!rule) {

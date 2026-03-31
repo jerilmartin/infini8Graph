@@ -89,7 +89,9 @@ class InstagramService {
                 breakdown: 'city'
             });
             if (cityRes?.data?.[0]?.total_value?.breakdowns?.[0]?.results) {
-                results.cities = cityRes.data[0].total_value.breakdowns[0].results.slice(0, 10);
+                const sorted = [...cityRes.data[0].total_value.breakdowns[0].results]
+                    .sort((a, b) => (b.value || 0) - (a.value || 0));
+                results.cities = sorted.slice(0, 10);
             }
         } catch (e) { console.warn('City demographics not available'); }
 
@@ -102,7 +104,9 @@ class InstagramService {
                 breakdown: 'country'
             });
             if (countryRes?.data?.[0]?.total_value?.breakdowns?.[0]?.results) {
-                results.countries = countryRes.data[0].total_value.breakdowns[0].results.slice(0, 10);
+                const sorted = [...countryRes.data[0].total_value.breakdowns[0].results]
+                    .sort((a, b) => (b.value || 0) - (a.value || 0));
+                results.countries = sorted.slice(0, 10);
             }
         } catch (e) { console.warn('Country demographics not available'); }
 
@@ -115,7 +119,8 @@ class InstagramService {
                 breakdown: 'age,gender'
             });
             if (genderAgeRes?.data?.[0]?.total_value?.breakdowns?.[0]?.results) {
-                results.genderAge = genderAgeRes.data[0].total_value.breakdowns[0].results;
+                results.genderAge = [...genderAgeRes.data[0].total_value.breakdowns[0].results]
+                    .sort((a, b) => (b.value || 0) - (a.value || 0));
             }
         } catch (e) { console.warn('Gender/age demographics not available'); }
 
@@ -172,6 +177,87 @@ class InstagramService {
             }
 
             throw error;
+        }
+    }
+
+    /**
+     * Get tagged media (includes collaboration posts)
+     * @param {number} limit - Number of posts to fetch
+     */
+    async getTaggedMedia(limit = 25) {
+        const basicFields = 'id,caption,media_type,media_url,thumbnail_url,permalink,timestamp,like_count,comments_count';
+        
+        try {
+            console.log(`🔍 Fetching tagged media for user ${this.instagramUserId}...`);
+            const result = await this.apiRequest(`/${this.instagramUserId}/tags`, {
+                fields: basicFields,
+                limit: limit
+            });
+            console.log(`✅ Tagged media fetched: ${result.data?.length || 0} posts`);
+            return result;
+        } catch (error) {
+            console.warn('⚠️ Tagged media fetch failed:', error.message);
+            return { data: [] };
+        }
+    }
+
+    /**
+     * Get all media including collaborations
+     * Combines owned posts and tagged posts (which includes collabs)
+     * @param {number} limit - Number of posts to fetch
+     */
+    async getAllMediaIncludingCollabs(limit = 100) {
+        try {
+            console.log(`📸 Fetching all media including collabs (limit: ${limit})...`);
+            
+            // Fetch owned posts
+            const ownedResponse = await this.getMedia(limit);
+            const ownedPosts = ownedResponse.data || [];
+            console.log(`   ✅ Owned posts: ${ownedPosts.length}`);
+
+            // Fetch tagged posts (includes collabs)
+            const taggedResponse = await this.getTaggedMedia(limit);
+            const taggedPosts = taggedResponse.data || [];
+            console.log(`   ✅ Tagged posts: ${taggedPosts.length}`);
+
+            // Combine and deduplicate by ID
+            const allPosts = [...ownedPosts];
+            const ownedIds = new Set(ownedPosts.map(p => p.id));
+
+            // Add tagged posts that aren't already in owned posts
+            let collabCount = 0;
+            for (const post of taggedPosts) {
+                if (!ownedIds.has(post.id)) {
+                    // Mark as collaboration/tagged
+                    allPosts.push({
+                        ...post,
+                        is_collaboration: true
+                    });
+                    collabCount++;
+                }
+            }
+
+            console.log(`   🤝 Collaboration posts found: ${collabCount}`);
+
+            // Sort by timestamp (newest first)
+            allPosts.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+
+            console.log(`   ✅ Total posts after merge: ${allPosts.length}`);
+
+            return {
+                data: allPosts.slice(0, limit),
+                owned_count: ownedPosts.length,
+                collab_count: collabCount
+            };
+        } catch (error) {
+            console.error('❌ Error fetching all media including collabs:', error);
+            // Fallback to just owned posts
+            const ownedResponse = await this.getMedia(limit);
+            return {
+                data: ownedResponse.data || [],
+                owned_count: ownedResponse.data?.length || 0,
+                collab_count: 0
+            };
         }
     }
 

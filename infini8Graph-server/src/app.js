@@ -10,6 +10,7 @@ import instagramRoutes from './routes/instagram.js';
 import adsRoutes from './routes/ads.js';
 import webhookRoutes from './routes/webhook.js';
 import automationRoutes from './routes/automationRoutes.js';
+import googleAuthRoutes from './routes/googleAuth.js';
 
 dotenv.config();
 
@@ -19,7 +20,7 @@ const PORT = process.env.PORT || 3005;
 // Trust proxy for ngrok/load balancers
 app.set('trust proxy', 1);
 
-console.log('🚀 SERVER STARTING IN:', process.cwd());
+
 // Global Request Logger - only log non-polling routes to keep terminal clean
 app.use((req, res, next) => {
     // Skip noisy polling endpoints
@@ -74,6 +75,7 @@ app.use('/api/instagram', instagramRoutes);
 app.use('/api/ads', adsRoutes);
 app.use('/api/webhook', webhookRoutes);
 app.use('/api/automation', automationRoutes);
+app.use('/api/google/auth', googleAuthRoutes);
 
 // Error handler
 app.use((err, req, res, next) => {
@@ -87,8 +89,6 @@ app.use((req, res) => {
 });
 
 app.listen(PORT, () => {
-    console.log(`🚀 infini8Graph API running on port ${PORT}`);
-    console.log(`📊 Health check: http://localhost:${PORT}/health`);
 });
 
 export default app;
